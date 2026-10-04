@@ -250,7 +250,7 @@ Utils.lazyload(() => {
   if (typeof self._i === 'undefined' || self._i.length !== 4) return undefined;
   document.title = `${self._i[0]} - Made by ${d}`;
   for (const i of document.querySelectorAll('.title')) i.innerHTML = `${self._i[0]}&nbsp;<small>v${self._i[1].join('.')}</small>`;
-  for (const i of document.querySelectorAll('.info')) i.innerHTML = `${w}&nbsp;(Made on ${fd(self._i[2])})<br><br>Last updated on ${fd(self._i[3])}`;
+  for (const i of document.querySelectorAll('.info')) i.innerHTML = `${w}&nbsp;(Made on ${fd(self._i[2])})<br>Modded by WakaranaiDesu<br><br>Last updated on ${fd(self._i[3])}`;
   for (const i of document.querySelectorAll('.main')) i.style.display = 'block';
   return undefined;
 });
