@@ -781,11 +781,54 @@ const hitFeedbackList = new HitEvents({ //   存放点击特效
   }
 });
 const interact = new InteractProxy(canvas);
+
+function checkNoiseField(x: number, y: number) {
+  if (!app || !app.blockAreas || app.blockAreas.length === 0) return false;
+  let inNormal = false;
+  let inSubtract = false;
+  for (let i = 0; i < app.blockAreas.length; i++) {
+    const blockArea = app.blockAreas[i];
+    if (!blockArea.visible || blockArea.isSubtract === undefined) continue;
+    const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
+    if (!isActive) continue;
+    
+    const topX = blockArea.topRightPercentage.x * canvasfg.width;
+    const topY = blockArea.topRightPercentage.y * canvasfg.height;
+    const botX = blockArea.bottomLeftPercentage.x * canvasfg.width;
+    const botY = blockArea.bottomLeftPercentage.y * canvasfg.height;
+    const width = Math.abs(topX - botX);
+    const height = Math.abs(topY - botY);
+    
+    const { scaleX, scaleY, cosr, sinr } = blockArea;
+    const scaledOriginX = (1 - scaleX) * blockArea.scaleAnchorX;
+    const scaledOriginY = (1 - scaleY) * blockArea.scaleAnchorY;
+    const offsetX = blockArea.offsetX + blockArea.rotateAnchorX + cosr * (scaledOriginX - blockArea.rotateAnchorX) - sinr * (scaledOriginY - blockArea.rotateAnchorY);
+    const offsetY = blockArea.offsetY + blockArea.rotateAnchorY + sinr * (scaledOriginX - blockArea.rotateAnchorX) + cosr * (scaledOriginY - blockArea.rotateAnchorY);
+    
+    const dx = x - offsetX;
+    const dy = y - offsetY;
+    const rx = dx * cosr + dy * sinr;
+    const ry = -dx * sinr + dy * cosr;
+    
+    if (scaleX === 0 || scaleY === 0) continue;
+    
+    const x_local = rx / scaleX;
+    const y_local = ry / scaleY;
+    
+    if (x_local >= -width / 2 && x_local <= width / 2 && y_local >= -height / 2 && y_local <= height / 2) {
+      if (blockArea.isSubtract) inSubtract = true;
+      else inNormal = true;
+    }
+  }
+  return inNormal !== inSubtract;
+}
+
 //   兼容PC鼠标
 interact.setMouseEvent({
   mousedownCallback(evt: MouseEvent) {
     const idx = evt.button;
     const { x, y } = getPos(evt);
+    if (checkNoiseField(x, y)) return;
     if (idx === 1) hitManager.activate('mouse', 4, x, y);
     else if (idx === 2) hitManager.activate('mouse', 2, x, y);
     else hitManager.activate('mouse', 1 << idx, x, y);
@@ -794,10 +837,15 @@ interact.setMouseEvent({
   mousemoveCallback(evt: MouseEvent) {
     const idx = evt.buttons;
     const { x, y } = getPos(evt);
+    const inNoise = checkNoiseField(x, y);
     for (let i = 1; i < 32; i <<= 1) {
       //   同时按住多个键时，只有最后一个键的move事件会触发
-      if (idx & i) hitManager.moving('mouse', i, x, y);
-      else hitManager.deactivate('mouse', i);
+      if (idx & i) {
+        if (inNoise) hitManager.deactivate('mouse', i);
+        else hitManager.moving('mouse', i, x, y);
+      } else {
+        hitManager.deactivate('mouse', i);
+      }
     }
   },
   mouseupCallback(evt: MouseEvent) {
@@ -829,6 +877,7 @@ interact.setTouchEvent({
   touchstartCallback(evt: TouchEvent) {
     for (const touch of evt.changedTouches) {
       const { x, y } = getPos(touch);
+      if (checkNoiseField(x, y)) continue;
       hitManager.activate('touch', touch.identifier, x, y);
       specialClick.activate(x, y);
     }
@@ -836,7 +885,8 @@ interact.setTouchEvent({
   touchmoveCallback(evt: TouchEvent) {
     for (const touch of evt.changedTouches) {
       const { x, y } = getPos(touch);
-      hitManager.moving('touch', touch.identifier, x, y);
+      if (checkNoiseField(x, y)) hitManager.deactivate('touch', touch.identifier);
+      else hitManager.moving('touch', touch.identifier, x, y);
     }
   },
   touchendCallback(evt: TouchEvent) {
