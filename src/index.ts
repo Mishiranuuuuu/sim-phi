@@ -1459,21 +1459,45 @@ interface ScaledHitFX {
 }
 let noiseCanvas: HTMLCanvasElement | null = null;
 let noiseCtx: CanvasRenderingContext2D | null = null;
+let normalFieldCanvas: HTMLCanvasElement | null = null;
+let normalFieldCtx: CanvasRenderingContext2D | null = null;
+let normalFieldMaskCanvas: HTMLCanvasElement | null = null;
+let normalFieldMaskCtx: CanvasRenderingContext2D | null = null;
+let subtractFieldCanvas: HTMLCanvasElement | null = null;
+let subtractFieldCtx: CanvasRenderingContext2D | null = null;
+let subtractFieldMaskCanvas: HTMLCanvasElement | null = null;
+let subtractFieldMaskCtx: CanvasRenderingContext2D | null = null;
 
 function drawBlockAreas() {
   if (app.blockAreas.length === 0) return;
 
-  if (!noiseCanvas) {
+  if (!noiseCanvas || !normalFieldCanvas || !normalFieldMaskCanvas || !subtractFieldCanvas || !subtractFieldMaskCanvas) {
     noiseCanvas = document.createElement('canvas');
+    normalFieldCanvas = document.createElement('canvas');
+    normalFieldMaskCanvas = document.createElement('canvas');
+    subtractFieldCanvas = document.createElement('canvas');
+    subtractFieldMaskCanvas = document.createElement('canvas');
     noiseCtx = noiseCanvas.getContext('2d');
+    normalFieldCtx = normalFieldCanvas.getContext('2d');
+    normalFieldMaskCtx = normalFieldMaskCanvas.getContext('2d');
+    subtractFieldCtx = subtractFieldCanvas.getContext('2d');
+    subtractFieldMaskCtx = subtractFieldMaskCanvas.getContext('2d');
   }
 
   if (noiseCanvas.width !== ctxfg.canvas.width || noiseCanvas.height !== ctxfg.canvas.height) {
-    noiseCanvas.width = ctxfg.canvas.width;
-    noiseCanvas.height = ctxfg.canvas.height;
+    for (const canvas of [noiseCanvas, normalFieldCanvas, normalFieldMaskCanvas, subtractFieldCanvas, subtractFieldMaskCanvas]) {
+      canvas.width = ctxfg.canvas.width;
+      canvas.height = ctxfg.canvas.height;
+    }
   }
 
-  noiseCtx!.clearRect(0, 0, noiseCanvas.width, noiseCanvas.height);
+  const layers = [noiseCtx!, normalFieldCtx!, normalFieldMaskCtx!, subtractFieldCtx!, subtractFieldMaskCtx!];
+  for (const ctx of layers) {
+    ctx.resetTransform();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, noiseCanvas.width, noiseCanvas.height);
+  }
 
   function getTransformAndDim(blockArea: any) {
     const topX = blockArea.topRightPercentage.x * ctxfg.canvas.width;
@@ -1509,79 +1533,64 @@ function drawBlockAreas() {
     );
   }
 
-  // Pass 1: Draw normal blocks (Fill and Stroke)
-  noiseCtx!.globalCompositeOperation = 'source-over';
+  function drawField(ctx: CanvasRenderingContext2D, blockArea: any, color: string) {
+    const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
+    const timeToActive = blockArea.enableTime - timeChart;
+    const isPulsing = timeToActive > 0 && timeToActive <= 1.0;
+    const { width, height, x, y } = getTransformAndDim(blockArea);
+
+    ctx.save();
+    setCtxTransform(ctx, blockArea);
+    ctx.fillStyle = isActive ? `rgba(${color}, 0.45)` : `rgba(${color}, 0.15)`;
+    ctx.fillRect(x, y, width, height);
+    // ctx.strokeStyle = isActive ? `rgba(${color}, 0.9)` : `rgba(${color}, 0.9)`;
+    // ctx.lineWidth = 1;
+    // ctx.strokeRect(x, y, width, height);
+    if (!isActive && isPulsing) {
+      const pulseAlpha = ((Math.sin(timeChart * Math.PI * 4) + 1) / 2) * 0.35;
+      ctx.fillStyle = `rgba(255, 255, 255, ${pulseAlpha})`;
+      ctx.fillRect(x, y, width, height);
+    }
+    ctx.restore();
+  }
+
+  function drawMask(ctx: CanvasRenderingContext2D, blockArea: any) {
+    const { width, height, x, y } = getTransformAndDim(blockArea);
+    ctx.save();
+    setCtxTransform(ctx, blockArea);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x, y, width, height);
+    // ctx.lineWidth = 2;
+    // ctx.strokeStyle = '#000';
+    // ctx.strokeRect(x, y, width, height);
+    ctx.restore();
+  }
+
+  // Build normal-field visuals and an opaque mask for their union.
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || blockArea.isSubtract) continue;
-
-    const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
-    const timeToActive = blockArea.enableTime - timeChart;
-    const isPulsing = timeToActive > 0 && timeToActive <= 1.0;
-
-    const { width, height, x, y } = getTransformAndDim(blockArea);
-
-    noiseCtx!.save();
-    setCtxTransform(noiseCtx!, blockArea);
-
-    if (isActive) {
-      noiseCtx!.fillStyle = 'rgba(255, 0, 0, 0.45)';
-      noiseCtx!.fillRect(x, y, width, height);
-      noiseCtx!.strokeStyle = 'rgba(255, 50, 50, 0.9)';
-      noiseCtx!.lineWidth = 1;
-      noiseCtx!.strokeRect(x, y, width, height);
-    } else {
-      noiseCtx!.fillStyle = 'rgba(255, 0, 0, 0.15)';
-      noiseCtx!.fillRect(x, y, width, height);
-      noiseCtx!.strokeStyle = 'rgba(255, 0, 0, 0.9)';
-      noiseCtx!.lineWidth = 1;
-      noiseCtx!.strokeRect(x, y, width, height);
-
-      if (isPulsing) {
-        const pulseAlpha = ((Math.sin(timeChart * Math.PI * 4) + 1) / 2) * 0.35;
-        noiseCtx!.fillStyle = `rgba(255, 255, 255, ${pulseAlpha})`;
-        noiseCtx!.fillRect(x, y, width, height);
-      }
-    }
-    noiseCtx!.restore();
+    drawField(normalFieldCtx!, blockArea, '255, 0, 0');
+    drawMask(normalFieldMaskCtx!, blockArea);
   }
 
-  // Pass 2: Draw subtract blocks (isSubtract = true)
-  noiseCtx!.globalCompositeOperation = 'source-over';
+  // Build subtract-field visuals and their opaque union mask.
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || !blockArea.isSubtract) continue;
-
-    const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
-    const timeToActive = blockArea.enableTime - timeChart;
-    const isPulsing = timeToActive > 0 && timeToActive <= 1.0;
-
-    const { width, height, x, y } = getTransformAndDim(blockArea);
-
-    noiseCtx!.save();
-    setCtxTransform(noiseCtx!, blockArea);
-
-    if (isActive) {
-      noiseCtx!.fillStyle = 'rgba(255, 0, 0, 0.45)';
-      noiseCtx!.fillRect(x, y, width, height);
-      noiseCtx!.strokeStyle = 'rgba(0, 255, 0, 0.9)';
-      noiseCtx!.lineWidth = 1;
-      noiseCtx!.strokeRect(x, y, width, height);
-    } else {
-      noiseCtx!.fillStyle = 'rgba(255, 0, 0, 0.15)';
-      noiseCtx!.fillRect(x, y, width, height);
-      noiseCtx!.strokeStyle = 'rgba(0, 255, 0, 0.9)';
-      noiseCtx!.lineWidth = 1;
-      noiseCtx!.strokeRect(x, y, width, height);
-
-      if (isPulsing) {
-        const pulseAlpha = ((Math.sin(timeChart * Math.PI * 4) + 1) / 2) * 0.35;
-        noiseCtx!.fillStyle = `rgba(255, 255, 255, ${pulseAlpha})`;
-        noiseCtx!.fillRect(x, y, width, height);
-      }
-    }
-    noiseCtx!.restore();
+    drawField(subtractFieldCtx!, blockArea, '255, 0, 0');
+    drawMask(subtractFieldMaskCtx!, blockArea);
   }
+
+  // Keep the exclusive portions of both field sets: normal \ subtract and
+  // subtract \ normal. Their intersection remains fully transparent.
+  normalFieldCtx!.globalCompositeOperation = 'destination-out';
+  normalFieldCtx!.drawImage(subtractFieldMaskCanvas!, 0, 0);
+  subtractFieldCtx!.globalCompositeOperation = 'destination-out';
+  subtractFieldCtx!.drawImage(normalFieldMaskCanvas!, 0, 0);
+
+  noiseCtx!.drawImage(normalFieldCanvas!, 0, 0);
+  noiseCtx!.drawImage(subtractFieldCanvas!, 0, 0);
 
   // Draw final result to the main canvas
   ctxfg.globalCompositeOperation = 'source-over';
