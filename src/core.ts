@@ -86,8 +86,11 @@ interface BlockAreaExtends extends BlockArea {
   rotateEventsIndex: number;
   scaleEventsIndex: number;
   visible: boolean;
-  anchorX: number;
-  anchorY: number;
+  // Rotation and scale have independent pivots in the block's local space.
+  rotateAnchorX: number;
+  rotateAnchorY: number;
+  scaleAnchorX: number;
+  scaleAnchorY: number;
   rotateEvents: BlockAreaRotateEventExtends[];
   moveEvents: BlockAreaMoveEventExtends[];
   scaleEvents: BlockAreaScaleEventExtends[];
@@ -404,8 +407,10 @@ export class Renderer {
       blockArea.cosr = 1;
       blockArea.sinr = 0;
       blockArea.visible = false;
-      blockArea.anchorX = 0.5;
-      blockArea.anchorY = 0.5;
+      blockArea.rotateAnchorX = 0;
+      blockArea.rotateAnchorY = 0;
+      blockArea.scaleAnchorX = 0;
+      blockArea.scaleAnchorY = 0;
       // We set startTime and endTime for block events by looking at previous events, since the structure only provides "time" for the keyframes
       // We assume the first event's start is its own time
       const populateStartTimes = (events: any[]) => {
@@ -631,8 +636,12 @@ export class Renderer {
         
         const startAnchorX = i > 0 ? prevEvt.anchor.x : activeRotEvt.anchor.x;
         const startAnchorY = i > 0 ? prevEvt.anchor.y : activeRotEvt.anchor.y;
-        blockArea.anchorX = startAnchorX + (activeRotEvt.anchor.x - startAnchorX) * ease(dt);
-        blockArea.anchorY = startAnchorY + (activeRotEvt.anchor.y - startAnchorY) * ease(dt);
+        const centerX = (blockArea.bottomLeftPercentage.x + blockArea.topRightPercentage.x) / 2;
+        const centerY = (blockArea.bottomLeftPercentage.y + blockArea.topRightPercentage.y) / 2;
+        const anchorX = startAnchorX + (activeRotEvt.anchor.x - startAnchorX) * ease(dt);
+        const anchorY = startAnchorY + (activeRotEvt.anchor.y - startAnchorY) * ease(dt);
+        blockArea.rotateAnchorX = this.matX(anchorX) - this.matX(centerX);
+        blockArea.rotateAnchorY = this.matY(anchorY) - this.matY(centerY);
 
         blockArea.cosr = Math.cos(blockArea.rotation);
         blockArea.sinr = Math.sin(blockArea.rotation);
@@ -661,8 +670,12 @@ export class Renderer {
 
         const startAnchorX = i > 0 ? prevEvt.anchor.x : activeScaleEvt.anchor.x;
         const startAnchorY = i > 0 ? prevEvt.anchor.y : activeScaleEvt.anchor.y;
-        blockArea.anchorX = startAnchorX + (activeScaleEvt.anchor.x - startAnchorX) * easeX(dt);
-        blockArea.anchorY = startAnchorY + (activeScaleEvt.anchor.y - startAnchorY) * easeY(dt);
+        const centerX = (blockArea.bottomLeftPercentage.x + blockArea.topRightPercentage.x) / 2;
+        const centerY = (blockArea.bottomLeftPercentage.y + blockArea.topRightPercentage.y) / 2;
+        const anchorX = startAnchorX + (activeScaleEvt.anchor.x - startAnchorX) * easeX(dt);
+        const anchorY = startAnchorY + (activeScaleEvt.anchor.y - startAnchorY) * easeY(dt);
+        blockArea.scaleAnchorX = this.matX(anchorX) - this.matX(centerX);
+        blockArea.scaleAnchorY = this.matY(anchorY) - this.matY(centerY);
       }
     }
   }

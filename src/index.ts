@@ -1083,11 +1083,11 @@ function mainLoop() {
   for (const callback of main.afterAll.values()) callback();
   // Copyright
   ctx.globalCompositeOperation = 'difference';
-  ctx.font = `${lineScale * 0.4}px Custom,Noto Sans SC`;
+  ctx.font = `${lineScale * 0.3}px Custom,Noto Sans SC`;
   ctx.fillStyle = '#fff';
   ctx.globalAlpha = 0.8;
-  ctx.textAlign = 'right';
-  const textX = (canvas.width + canvasfg.width) / 2 - lineScale * 0.1;
+  ctx.textAlign = 'center';
+  const textX = canvas.width / 2;
   const textY = canvas.height - lineScale * 0.1;
   ctx.fillText(`Phi\x67ros Simulator v${meta[1].join('.')} - Code by lchz\x683\x3473`, textX, textY - lineScale * 0.5);
   ctx.fillText(`Modded by WakaranaiDesu`, textX, textY);
@@ -1489,13 +1489,23 @@ function drawBlockAreas() {
   }
 
   function setCtxTransform(ctx: CanvasRenderingContext2D, blockArea: any) {
+    const { scaleX, scaleY, cosr, sinr } = blockArea;
+
+    // Move places the block in world space. Scale and rotation anchors are
+    // local pivots, so they shift the shape around its moved position rather
+    // than making the whole field orbit a fixed screen coordinate.
+    const scaledOriginX = (1 - scaleX) * blockArea.scaleAnchorX;
+    const scaledOriginY = (1 - scaleY) * blockArea.scaleAnchorY;
+    const offsetX = blockArea.offsetX + blockArea.rotateAnchorX + cosr * (scaledOriginX - blockArea.rotateAnchorX) - sinr * (scaledOriginY - blockArea.rotateAnchorY);
+    const offsetY = blockArea.offsetY + blockArea.rotateAnchorY + sinr * (scaledOriginX - blockArea.rotateAnchorX) + cosr * (scaledOriginY - blockArea.rotateAnchorY);
+
     ctx.setTransform(
-      blockArea.scaleX * blockArea.cosr,
-      blockArea.scaleX * blockArea.sinr,
-      -blockArea.scaleY * blockArea.sinr,
-      blockArea.scaleY * blockArea.cosr,
-      blockArea.offsetX,
-      blockArea.offsetY
+      scaleX * cosr,
+      scaleX * sinr,
+      -scaleY * sinr,
+      scaleY * cosr,
+      offsetX,
+      offsetY
     );
   }
 
