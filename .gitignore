@@ -12,5 +12,3 @@ rubbish
 * copy.*
 public/local
 public/lib
-public/utils
-public/service-worker.js
