@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <!--viewport-fit=cover:Fill the whole screen on iPhone X-->
+    <meta charset="utf-8" name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+    <title>(っ °Д °;)っ</title>
+    <link rel="shortcut icon" href="./icon.svg" />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="stylesheet" href="/utils/style.css" />
+    <link rel="stylesheet" href="/src/style.css" />
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/service-worker.js').then(() => {
+          console.log('Service Worker Registered');
+        });
+      }
+    </script>
+    <script>
+      eval('try{eval("\'use strict\';{async(a=1)=>1}")}catch(e){location.href="/412.html"}');
+    </script>
+    <script src="/utils/main.js"></script>
+    <script type="module" src="/src/index.ts"></script>
+  </head>
+
+  <body>
+    <noscript><strong style="color: #f00">This browser does not support JavaScript, the script cannot run.</strong></noscript>
+    <div class="index">
+      <div class="main">
+        <h1 class="title"></h1>
+        <p class="info"></p>
+        <p class="profile">Upload chart and resource files or pack them into a zip and upload;<br />After loading is complete, adjust parameters and click "Play".<br />Double-click during play: Top-left to pause; Top-right to restart; Bottom-right to fullscreen.</p>
+        <div id="uploader" class="disabled">
+          <input type="button" id="uploader-upload" value="Upload" />
+          <div id="uploader-select">
+            <label id="uploader-file">Upload File</label>
+            <label id="uploader-dir">Upload Folder</label>
+          </div>
+        </div>
+        <input type="button" value="Reset" onclick="location.reload(true)" />
+        <input type="button" id="btn-rmg" value="Assets" />
+        <input type="button" id="btn-docs" value="Help" />
+        <input type="button" id="btn-more" value="Settings" />
+        <div id="select" class="disabled">
+          <div>Chart: <select id="select-chart" style="width: 6em"></select></div>
+          <div>Music: <select id="select-bgm" style="width: 6em"></select></div>
+          <div>Image: <select id="select-bg" style="width: 6em"></select></div>
+          <br />
+          <div>
+            Aspect Ratio: <select id="select-aspect-ratio" style="width: 4em">
+              <option value="1.25">5:4</option>
+              <option value="1.333333">4:3</option>
+              <option value="1.4316546762589928">10:7</option>
+              <option value="1.461538">19:13</option>
+              <option value="1.6">8:5</option>
+              <option value="1.666667">5:3</option>
+              <option value="1.692308">22:13</option>
+              <option value="1.777778" selected>16:9</option>
+            </select>
+          </div>
+          <div>
+            Note Scale: <select id="select-note-scale" style="width: 4em">
+              <option value="0.8">Smallest</option>
+              <option value="0.9">Smaller</option>
+              <option value="1" selected>Default</option>
+              <option value="1.15">Larger</option>
+              <option value="1.3">Largest</option>
+            </select>
+          </div>
+          <div>
+            Background Dim: <select id="select-background-dim" style="width: 4em">
+              <option value="1">Darkest</option>
+              <option value="0.8">Dark</option>
+              <option value="0.6" selected>Default</option>
+              <option value="0.4">Light</option>
+              <option value="0.2">Lightest</option>
+            </select>
+          </div>
+          <br />
+          <div>Title: <input id="input-name" class="input" style="width: 7em" placeholder="&#60; Untitled &#62;" /></div>
+          <div>Artist: <input id="input-artist" class="input" style="width: 7em" placeholder="&#60; nameless &#62;" /></div>
+          <br />
+          <div>Illustrator: <input id="input-illustrator" class="input" style="width: 7em" placeholder="&#60; nameless &#62;" /></div>
+          <div>Charter: <input id="input-charter" class="input" style="width: 7em" placeholder="&#60; nameless &#62;" /></div>
+          <br />
+          <div>Difficulty: <select id="select-difficulty" style="width: 3em"></select></div>
+          <div>Level: <select id="select-level" style="width: 3em"></select></div>
+          <div>
+            SFX Volume: <select id="select-volume" style="width: 5em">
+              <option value="0">0%</option>
+              <option value="0.25">25%</option>
+              <option value="0.5">50%</option>
+              <option value="1" selected>100%</option>
+              <option value="2.5">250%</option>
+              <option value="5">500%</option>
+            </select>
+          </div>
+          <br />
+          <div><input type="checkbox" id="feedback" checked /><label for="feedback">Touch Feedback</label></div>
+          <div><input type="checkbox" id="imageBlur" checked /><label for="imageBlur">Background Blur</label></div>
+          <div><input type="checkbox" id="highLight" checked /><label for="highLight">Multitap Highlight</label></div>
+          <br />
+          <div><input type="checkbox" id="lineColor" checked /><label for="lineColor">FC/AP Indicator</label></div>
+          <div class="disabled-when-playing"><input type="checkbox" id="autoplay" checked /><label for="autoplay">Autoplay</label></div>
+          <div class="disabled-when-playing"><input type="checkbox" id="showTransition" checked /><label for="showTransition">Transition Animation</label></div>
+          <br />
+          <div class="">
+            Mirror: <select id="select-flip" style="width: 4em">
+              <option value="0" selected>None</option>
+              <option value="1">X-Axis</option>
+              <option value="2">Y-Axis</option>
+              <option value="3">X&Y</option>
+            </select>
+          </div>
+          <div class="disabled-when-playing">
+            Music Speed: <select id="select-speed" style="width: 4em">
+              <option value="Slowest">Slowest</option>
+              <option value="Slower">Slower</option>
+              <option value="" selected>Normal</option>
+              <option value="Faster">Faster</option>
+              <option value="Fastest">Fastest</option>
+            </select>
+          </div>
+          <br />
+          <div class="disabled-when-playing">Chart Offset(ms): <input id="input-offset" type="number" step="5" class="input" style="width: 4em" placeholder="0" /></div>
+          <div>
+            <input type="button" id="btn-play" value="Play" />
+            <input type="button" id="btn-pause" value="Pause" />
+          </div>
+        </div>
+        <div><strong id="msg-out">Initializing...</strong></div>
+        <div id="stage">
+          <i class="tl">&#xe034;</i>
+          <i class="tr">&#xe042;</i>
+          <i class="bl">&#xe8b8;</i>
+          <i class="br">&#xe5d0;</i>
+          <div id="mask">
+            <div>GitHub: lchz&#104;3473/sim-phi</div>
+          </div>
+        </div>
+        <div id="cover-dark" class="cover-dark fade"></div>
+        <div id="cover-rmg" class="cover-view fade" qwq>
+          <div id="view-nav2" class="view-nav">
+            <a id="nav-rmg">Assets</a>
+            <a id="nav-ext">Extensions</a>
+          </div>
+          <div class="view-content">
+            <div id="view-rmg"></div>
+            <div id="view-ext"></div>
+          </div>
+        </div>
+        <div id="cover-view" class="cover-view fade" qwq>
+          <div id="view-nav" class="view-nav">
+            <a id="nav-cfg">Settings</a>
+            <a id="nav-msg">Logs</a>
+          </div>
+          <div class="view-content">
+            <div id="view-cfg"></div>
+            <div id="view-msg"></div>
+          </div>
+        </div>
+      </div>
+      <p class="footer">&copy;&nbsp;2020-2024&nbsp;lchz&#104;3473</p>
+    </div>
+  </body>
+</html>
