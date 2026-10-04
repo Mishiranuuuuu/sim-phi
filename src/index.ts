@@ -791,30 +791,30 @@ function checkNoiseField(x: number, y: number) {
     if (!blockArea.visible || blockArea.isSubtract === undefined) continue;
     const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
     if (!isActive) continue;
-    
+
     const topX = blockArea.topRightPercentage.x * canvasfg.width;
     const topY = blockArea.topRightPercentage.y * canvasfg.height;
     const botX = blockArea.bottomLeftPercentage.x * canvasfg.width;
     const botY = blockArea.bottomLeftPercentage.y * canvasfg.height;
     const width = Math.abs(topX - botX);
     const height = Math.abs(topY - botY);
-    
+
     const { scaleX, scaleY, cosr, sinr } = blockArea;
     const scaledOriginX = (1 - scaleX) * blockArea.scaleAnchorX;
     const scaledOriginY = (1 - scaleY) * blockArea.scaleAnchorY;
     const offsetX = blockArea.offsetX + blockArea.rotateAnchorX + cosr * (scaledOriginX - blockArea.rotateAnchorX) - sinr * (scaledOriginY - blockArea.rotateAnchorY);
     const offsetY = blockArea.offsetY + blockArea.rotateAnchorY + sinr * (scaledOriginX - blockArea.rotateAnchorX) + cosr * (scaledOriginY - blockArea.rotateAnchorY);
-    
+
     const dx = x - offsetX;
     const dy = y - offsetY;
     const rx = dx * cosr + dy * sinr;
     const ry = -dx * sinr + dy * cosr;
-    
+
     if (scaleX === 0 || scaleY === 0) continue;
-    
+
     const x_local = rx / scaleX;
     const y_local = ry / scaleY;
-    
+
     if (x_local >= -width / 2 && x_local <= width / 2 && y_local >= -height / 2 && y_local <= height / 2) {
       if (blockArea.isSubtract) inSubtract = true;
       else inNormal = true;
@@ -1228,7 +1228,7 @@ function loopCanvas() {
   // if (awawa) ctxfg.filter = 'none';
   ctxfg.resetTransform();
   if (timeIn.second >= 3 && timeOut.second === 0) {
-    drawBlockAreas();
+    // drawBlockAreas(); // Moved to the end of loopCanvas
     //   绘制note
     drawNotes();
     if (showPoint.checked) {
@@ -1382,6 +1382,10 @@ function loopCanvas() {
   if (timeIn.second >= 2.5 && main.filter != null) main.filter(ctxfg, timeBgm, nowTimeMS / 1e3); //   滤镜处理
   if (checkFeedback.checked) hitFeedbackList.animate(); //   绘制打击特效0
   ctxfg.resetTransform();
+
+  if (timeIn.second >= 3 && timeOut.second === 0) {
+    drawBlockAreas();
+  }
 }
 //   判定线函数，undefined/0:默认,1:非,2:恒成立
 function drawLine(bool: number, lineScale: number) {
@@ -1582,8 +1586,7 @@ function drawBlockAreas() {
       offsetY
     );
   }
-
-  function drawField(ctx: CanvasRenderingContext2D, blockArea: any, color: string) {
+  function drawField(ctx: CanvasRenderingContext2D, blockArea: any) {
     const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
     const timeToActive = blockArea.enableTime - timeChart;
     const isPulsing = timeToActive > 0 && timeToActive <= 1.0;
@@ -1591,16 +1594,24 @@ function drawBlockAreas() {
 
     ctx.save();
     setCtxTransform(ctx, blockArea);
-    ctx.fillStyle = isActive ? `rgba(${color}, 0.45)` : `rgba(${color}, 0.15)`;
-    ctx.fillRect(x, y, width, height);
-    // ctx.strokeStyle = isActive ? `rgba(${color}, 0.9)` : `rgba(${color}, 0.9)`;
-    // ctx.lineWidth = 1;
-    // ctx.strokeRect(x, y, width, height);
-    if (!isActive && isPulsing) {
-      const pulseAlpha = ((Math.sin(timeChart * Math.PI * 4) + 1) / 2) * 0.35;
-      ctx.fillStyle = `rgba(255, 255, 255, ${pulseAlpha})`;
-      ctx.fillRect(x, y, width, height);
+
+    if (isActive) {
+      ctx.fillStyle = 'rgb(255, 0, 0)';
+    } else {
+      let r = 85;
+      let g = 0;
+      let b = 0;
+      if (isPulsing) {
+        const pulseAlpha = ((Math.sin(timeChart * Math.PI * 4) + 1) / 2) * 0.35;
+        const white = Math.min(255, 255 * (pulseAlpha / 0.45));
+        r = Math.min(255, r + white);
+        g = Math.min(255, white);
+        b = Math.min(255, white);
+      }
+      ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
     }
+
+    ctx.fillRect(x, y, width, height);
     ctx.restore();
   }
 
@@ -1620,16 +1631,30 @@ function drawBlockAreas() {
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || blockArea.isSubtract) continue;
-    drawField(normalFieldCtx!, blockArea, '255, 0, 0');
+    const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
+    if (!isActive) drawField(normalFieldCtx!, blockArea);
     drawMask(normalFieldMaskCtx!, blockArea);
+  }
+  for (let i = 0; i < app.blockAreas.length; i++) {
+    const blockArea = app.blockAreas[i];
+    if (!blockArea.visible || blockArea.isSubtract) continue;
+    const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
+    if (isActive) drawField(normalFieldCtx!, blockArea);
   }
 
   // Build subtract-field visuals and their opaque union mask.
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || !blockArea.isSubtract) continue;
-    drawField(subtractFieldCtx!, blockArea, '255, 0, 0');
+    const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
+    if (!isActive) drawField(subtractFieldCtx!, blockArea);
     drawMask(subtractFieldMaskCtx!, blockArea);
+  }
+  for (let i = 0; i < app.blockAreas.length; i++) {
+    const blockArea = app.blockAreas[i];
+    if (!blockArea.visible || !blockArea.isSubtract) continue;
+    const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
+    if (isActive) drawField(subtractFieldCtx!, blockArea);
   }
 
   // Keep the exclusive portions of both field sets: normal \ subtract and
@@ -1644,7 +1669,9 @@ function drawBlockAreas() {
 
   // Draw final result to the main canvas
   ctxfg.globalCompositeOperation = 'source-over';
+  ctxfg.globalAlpha = 0.45;
   ctxfg.drawImage(noiseCanvas, 0, 0);
+  ctxfg.globalAlpha = 1.0;
 }
 
 //   绘制Note
