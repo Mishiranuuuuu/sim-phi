@@ -39,7 +39,7 @@ function skin() {
       };
     }
   });
-  // 直到uid进入DOM树才能触发click事件
+  //   直到uid进入DOM树才能触发click事件
   waitForElementById(uid, elem => {
     elem.addEventListener('click', () => input.click());
   });
@@ -62,7 +62,7 @@ function skin() {
       HitSong1: ['HitSong1.ogg', 'Drag.ogg', 'drag.ogg'],
       HitSong2: ['HitSong2.ogg', 'Flick.ogg', 'flick.ogg']
     };
-    // 根据别名补全文件列表
+    //   根据别名补全文件列表
     /** @type {Map<string, ByteData>} */
     const entries = new Map();
     for (const [a, b] of Object.entries(alias)) {
@@ -74,7 +74,7 @@ function skin() {
         }
       }
     }
-    // 读取图片
+    //   读取图片
     if (entries.has('Tap')) {
       const img = await createImageBitmap(new Blob([entries.get('Tap').buffer]));
       const noteScale = 1089 / img.width;
@@ -139,7 +139,7 @@ function skin() {
       const duration = config.hitFxDuration * 1000 || 500;
       hook.noteRender.updateFX(img, scale, img.width / x, img.height / y, hideParts, duration);
     }
-    // 读取音频
+    //   读取音频
     if (entries.has('HitSong0')) hook.res.HitSong0 = await audio.decode(entries.get('HitSong0').buffer.slice(0));
     if (entries.has('HitSong1')) hook.res.HitSong1 = await audio.decode(entries.get('HitSong1').buffer.slice(0));
     if (entries.has('HitSong2')) hook.res.HitSong2 = await audio.decode(entries.get('HitSong2').buffer.slice(0));

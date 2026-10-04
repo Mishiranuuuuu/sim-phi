@@ -67,9 +67,35 @@ interface JudgeLineExtends extends JudgeLine {
   imageL: [ImageBitmap, ImageBitmap, null, ImageBitmap];
   imageC: boolean;
 }
+interface BlockAreaEventExtends {
+  startSeconds: number;
+  endSeconds: number;
+}
+interface BlockAreaRotateEventExtends extends BlockAreaRotateEvent, BlockAreaEventExtends { }
+interface BlockAreaMoveEventExtends extends BlockAreaMoveEvent, BlockAreaEventExtends { }
+interface BlockAreaScaleEventExtends extends BlockAreaScaleEvent, BlockAreaEventExtends { }
+interface BlockAreaExtends extends BlockArea {
+  offsetX: number;
+  offsetY: number;
+  scaleX: number;
+  scaleY: number;
+  rotation: number;
+  cosr: number;
+  sinr: number;
+  moveEventsIndex: number;
+  rotateEventsIndex: number;
+  scaleEventsIndex: number;
+  visible: boolean;
+  anchorX: number;
+  anchorY: number;
+  rotateEvents: BlockAreaRotateEventExtends[];
+  moveEvents: BlockAreaMoveEventExtends[];
+  scaleEvents: BlockAreaScaleEventExtends[];
+}
 interface ChartExtends extends Chart {
   maxSeconds: number;
   judgeLineList: JudgeLineExtends[];
+  blockAreaList: BlockAreaExtends[];
 }
 interface EventSeconds {
   startTime: number;
@@ -78,7 +104,7 @@ interface EventSeconds {
   endSeconds: number;
 }
 export class Renderer {
-  // 容器和画布上下文
+  //   容器和画布上下文
   public stage: HTMLDivElement;
   public canvas: HTMLCanvasElement;
   public ctx: CanvasRenderingContext2D;
@@ -95,7 +121,7 @@ export class Renderer {
   private matX: (x: number) => number;
   private matY: (y: number) => number;
   private matR: (r: number) => number;
-  // 用户设置项
+  //   用户设置项
   public speed: number;
   public lineScale: number;
   public noteScale: number;
@@ -108,7 +134,7 @@ export class Renderer {
   public enableFR: boolean;
   public enableVP: boolean;
   public lowResFactor: number;
-  // 谱面数据
+  //   谱面数据
   public readonly lines: JudgeLineExtends[];
   public readonly notes: NoteExtends[];
   public readonly taps: NoteExtends[];
@@ -122,7 +148,8 @@ export class Renderer {
   public flicksReversed: NoteExtends[];
   public holdsReversed: NoteExtends[];
   public readonly tapholds: NoteExtends[];
-  // 资源数据
+  public readonly blockAreas: BlockAreaExtends[];
+  //   资源数据
   public chart: ChartExtends | null;
   public bgMusic: AudioBuffer | null;
   public bgVideo: HTMLVideoElement | null;
@@ -133,8 +160,8 @@ export class Renderer {
     const fail = () => { throw new Error('Failed to initialize canvas') };
     this.stage = stage;
     this.canvas = document.createElement('canvas');
-    this.ctx = this.canvas.getContext('2d', { alpha: false }) || fail(); // 游戏界面(alpha:false会使Firefox显示异常/需要验证)
-    this.canvasfg = document.createElement('canvas'); // 绘制游戏主界面(OffscreenCanvas会使Safari崩溃)
+    this.ctx = this.canvas.getContext('2d', { alpha: false }) || fail(); //   游戏界面(alpha:false会使Firefox显示异常/需要验证)
+    this.canvasfg = document.createElement('canvas'); //   绘制游戏主界面(OffscreenCanvas会使Safari崩溃)
     this.ctxfg = this.canvasfg.getContext('2d') || fail();
     this.stage.appendChild(this.canvas);
     this.canvas.style.cssText = ';position:absolute;top:0px;left:0px;right:0px;bottom:0px';
@@ -142,8 +169,8 @@ export class Renderer {
     // config
     this.speed = 1;
     this.lineScale = 57.6;
-    this.noteScale = 1; // note缩放设定值
-    this.noteScaleRatio = 8e3; // note缩放比率，由noteScale计算而来
+    this.noteScale = 1; //   note缩放设定值
+    this.noteScaleRatio = 8e3; //   note缩放比率，由noteScale计算而来
     this.brightness = 0.6;
     // this.songName = '';
     // this.chartLevel = '';
@@ -185,6 +212,7 @@ export class Renderer {
     this.flicksReversed = [];
     this.holdsReversed = [];
     this.tapholds = [];
+    this.blockAreas = [];
     // canvas
     this.lowResFactor = 1;
     this.width = 0;
@@ -209,7 +237,7 @@ export class Renderer {
   // config
   public setNoteScale(num = 1): void {
     this.noteScale = num;
-    this.noteScaleRatio = this.canvasfg.width * this.noteScale / 8080; // note、特效缩放
+    this.noteScaleRatio = this.canvasfg.width * this.noteScale / 8080; //   note、特效缩放
   }
   public setLowResFactor(num = 1): void {
     this._setLowResFactor(num);
@@ -220,7 +248,7 @@ export class Renderer {
     if (this.width === width && this.height === height) return;
     this.width = width;
     this.height = height;
-    this.canvas.style.cssText += `;width:${width.toFixed(3)}px;height:${height.toFixed(3)}px`; // 只有inset还是会溢出
+    this.canvas.style.cssText += `;width:${width.toFixed(3)}px;height:${height.toFixed(3)}px`; //   只有inset还是会溢出
     this._resizeCanvas();
   }
   public mirrorView(code = this._mirrorType): void {
@@ -237,7 +265,7 @@ export class Renderer {
     const ra = -Math.sign(scaleX * scaleY) * Math.PI / 180;
     const rb = scaleY > 0 ? 0 : Math.PI;
     const tx = Math.sign(scaleY) * xa * 0.05625;
-    const ty = Math.sign(scaleY) * -ya * 0.6; // 控制note流速
+    const ty = Math.sign(scaleY) * -ya * 0.6; //   控制note流速
     this.matX = x => xb + xa * (x - offsetX);
     this.matY = y => yb + ya * (y - offsetY);
     this.matR = r => rb + ra * r;
@@ -245,7 +273,7 @@ export class Renderer {
     this.scaleY = ty;
     this.initialized = true;
   }
-  // note预处理
+  //   note预处理
   public prerenderChart(chart: Chart): void {
     this.lines.length = 0;
     this.notes.length = 0;
@@ -254,6 +282,7 @@ export class Renderer {
     this.flicks.length = 0;
     this.holds.length = 0;
     this.tapholds.length = 0;
+    this.blockAreas.length = 0;
     const chartNew = chart.duplicate() as ChartExtends;
     for (const line of chartNew.judgeLineList) {
       let y = Math.fround(line.speedEvents[0].startTime / line.bpm * 1.875);
@@ -283,7 +312,7 @@ export class Renderer {
       if (seconds < ss.hitStart) ss.hitStart = seconds;
       if (seconds > ss.hitEnd) ss.hitEnd = seconds;
     };
-    // 添加seconds
+    //   添加seconds
     const addSeconds = (events: EventSeconds[], bpm: number) => {
       for (const evt of events) {
         evt.startSeconds = evt.startTime / bpm * 1.875;
@@ -292,7 +321,7 @@ export class Renderer {
         if (evt.endTime < 1e9 && evt.endTime !== events[events.length - 1].endTime) aniUpdate(evt.endSeconds);
       }
     };
-    // 获取note最大可见位置
+    //   获取note最大可见位置
     const getMaxVisiblePos = (x: number) => {
       const n = Math.fround(x);
       if (!isFinite(n)) throw new TypeError('Argument must be a finite number');
@@ -305,8 +334,9 @@ export class Renderer {
       new Uint32Array(a_.buffer)[0] += a_[0] <= 0 ? 1 : -1;
       return a_[0] * prime;
     };
-    // 向Renderer添加Note
+    //   向Renderer添加Note
     const addNote = (note: NoteExtends, beat32: number, line: JudgeLineExtends, noteId: number, isAbove: boolean) => {
+      console.log(beat32)
       note.offsetX = 0;
       note.offsetY = 0;
       note.alpha = 0;
@@ -330,7 +360,7 @@ export class Renderer {
       if (note.type === 1 || note.type === 3) this.tapholds.push(note);
     };
     const sortNote = (a: NoteExtends, b: NoteExtends) => a.seconds - b.seconds || a.lineId - b.lineId || a.noteId - b.noteId;
-    // 优化events
+    //   优化events
     chartNew.judgeLineList.forEach((i, lineId) => i.lineId = lineId);
     for (const line of chartNew.judgeLineList) {
       line.bpm *= this.speed;
@@ -338,7 +368,7 @@ export class Renderer {
       line.offsetY = 0;
       line.alpha = 0;
       line.rotation = 0;
-      line.positionY = 0; // 临时过渡用
+      line.positionY = 0; //   临时过渡用
       line.positionY2 = 0;
       // line.speedEvents = normalizeSpeedEvent(line.speedEvents) as SpeedEventExtends[];
       // line.judgeLineDisappearEvents = normalizeLineEvent(line.judgeLineDisappearEvents) as LineEventExtends[];
@@ -352,9 +382,43 @@ export class Renderer {
       addSeconds(line.judgeLineDisappearEvents, line.bpm);
       addSeconds(line.judgeLineMoveEvents, line.bpm);
       addSeconds(line.judgeLineRotateEvents, line.bpm);
-      this.lines.push(line); // TODO: 可以定义新类避免函数在循环里定义
+      this.lines.push(line); //   TODO: 可以定义新类避免函数在循环里定义
       line.notesAbove.forEach((j, noteId) => addNote(j, 1.875 / line.bpm, line, noteId, true));
       line.notesBelow.forEach((j, noteId) => addNote(j, 1.875 / line.bpm, line, noteId, false));
+    }
+    //   处理BlockArea
+    for (const blockArea of chartNew.blockAreaList) {
+      // BlockArea times are already in seconds
+      blockArea.appearTime *= 1;
+      blockArea.enableTime *= 1;
+      blockArea.disableTime *= 1;
+      blockArea.disappearTime *= 1;
+      blockArea.moveEventsIndex = 0;
+      blockArea.rotateEventsIndex = 0;
+      blockArea.scaleEventsIndex = 0;
+      blockArea.offsetX = 0;
+      blockArea.offsetY = 0;
+      blockArea.scaleX = 1;
+      blockArea.scaleY = 1;
+      blockArea.rotation = 0;
+      blockArea.cosr = 1;
+      blockArea.sinr = 0;
+      blockArea.visible = false;
+      blockArea.anchorX = 0.5;
+      blockArea.anchorY = 0.5;
+      // We set startTime and endTime for block events by looking at previous events, since the structure only provides "time" for the keyframes
+      // We assume the first event's start is its own time
+      const populateStartTimes = (events: any[]) => {
+        for (let i = 0; i < events.length; i++) {
+          events[i].startSeconds = i > 0 ? events[i - 1].time : events[i].time;
+          events[i].endSeconds = events[i].time;
+        }
+      };
+      populateStartTimes(blockArea.rotateEvents);
+      populateStartTimes(blockArea.moveEvents);
+      populateStartTimes(blockArea.scaleEvents);
+
+      this.blockAreas.push(blockArea);
     }
     this.notes.sort(sortNote);
     this.taps.sort(sortNote);
@@ -368,11 +432,11 @@ export class Renderer {
     this.flicksReversed = this.flicks.toReversed();
     this.linesReversed = this.lines.toReversed();
     this.tapholds.sort(sortNote);
-    // 多押标记
+    //   多押标记
     const timeOfMulti: Record<string, number> = {};
     for (const note of this.notes) timeOfMulti[note.seconds.toFixed(6)] = timeOfMulti[note.seconds.toFixed(6)] ? 2 : 1;
     for (const note of this.notes) note.isMulti = timeOfMulti[note.seconds.toFixed(6)] === 2;
-    // 分析邻近Note(0.01s内标记，用于预处理Flick,TapHold重叠判定)
+    //   分析邻近Note(0.01s内标记，用于预处理Flick,TapHold重叠判定)
     for (let i = 0; i < this.flicks.length; i++) {
       const note = this.flicks[i];
       note.nearNotes = [];
@@ -395,7 +459,7 @@ export class Renderer {
     this.chart.maxSeconds = ss.aniEnd;
     console.table(ss);
   }
-  /** 从0开始，将事件index定位到正确位置 */
+  /*  * 从0开始，将事件index定位到正确位置   */
   public seekLineEventIndex(time?: number): void {
     if (!this.initialized) throw new Error('Not initialized');
     for (const line of this.lines) {
@@ -408,6 +472,15 @@ export class Renderer {
       while (line.disappearEventsIndex < line.judgeLineDisappearEvents.length && line.judgeLineDisappearEvents[line.disappearEventsIndex].endSeconds < time) line.disappearEventsIndex++;
       while (line.moveEventsIndex < line.judgeLineMoveEvents.length && line.judgeLineMoveEvents[line.moveEventsIndex].endSeconds < time) line.moveEventsIndex++;
       while (line.rotateEventsIndex < line.judgeLineRotateEvents.length && line.judgeLineRotateEvents[line.rotateEventsIndex].endSeconds < time) line.rotateEventsIndex++;
+    }
+    for (const blockArea of this.blockAreas) {
+      blockArea.moveEventsIndex = 0;
+      blockArea.rotateEventsIndex = 0;
+      blockArea.scaleEventsIndex = 0;
+      if (time == null) continue;
+      while (blockArea.moveEventsIndex < blockArea.moveEvents.length && blockArea.moveEvents[blockArea.moveEventsIndex].endSeconds < time) blockArea.moveEventsIndex++;
+      while (blockArea.rotateEventsIndex < blockArea.rotateEvents.length && blockArea.rotateEvents[blockArea.rotateEventsIndex].endSeconds < time) blockArea.rotateEventsIndex++;
+      while (blockArea.scaleEventsIndex < blockArea.scaleEvents.length && blockArea.scaleEvents[blockArea.scaleEventsIndex].endSeconds < time) blockArea.scaleEventsIndex++;
     }
   }
   public updateByTime(time: number): void {
@@ -465,7 +538,7 @@ export class Renderer {
         i.offsetX = i.projectX + dy * i.sinr;
         i.projectY = line.offsetY + dx * i.sinr;
         i.offsetY = i.projectY - dy * i.cosr;
-        i.visible = (i.offsetX - this.wlen) ** 2 + (i.offsetY - this.hlen) ** 2 < (this.wlen * 1.23625 + this.hlen + this.scaleY * i.holdSeconds * this.speed * i.speed) ** 2; // Math.hypot实测性能较低
+        i.visible = (i.offsetX - this.wlen) ** 2 + (i.offsetY - this.hlen) ** 2 < (this.wlen * 1.23625 + this.hlen + this.scaleY * i.holdSeconds * this.speed * i.speed) ** 2; //   Math.hypot实测性能较低
         i.showPoint = false;
         if (i.badTime != null) {
           // Not bad
@@ -479,7 +552,7 @@ export class Renderer {
           if (i.type === 3) {
             i.showPoint = true;
             i.alpha = i.speed === 0 ? 0 : i.status % 4 === 2 ? 0.45 : 1;
-          } else i.alpha = Math.max(1 - (time - i.seconds) / 0.16, 0); // 过线后0.16s消失
+          } else i.alpha = Math.max(1 - (time - i.seconds) / 0.16, 0); //   过线后0.16s消失
         }
       };
       for (const note of line.notesAbove) {
@@ -491,6 +564,105 @@ export class Renderer {
         note.cosr = -line.cosr;
         note.sinr = -line.sinr;
         setAlpha(note, -this.scaleX * note.positionX, this.scaleY * getBadY(note));
+      }
+    }
+    const tweenEases = [
+      (t: number) => t, // 0 - Linear
+      (t: number) => 1 - Math.cos(t * Math.PI / 2), // 1 - EaseInSine
+      (t: number) => Math.sin(t * Math.PI / 2), // 2 - EaseOutSine
+      (t: number) => (1 - Math.cos(t * Math.PI)) / 2, // 3 - EaseInOutSine
+      (t: number) => t ** 2, // 4 - EaseInQuad
+      (t: number) => 1 - (t - 1) ** 2, // 5 - EaseOutQuad
+      (t: number) => ((t *= 2) < 1 ? t ** 2 : -((t - 2) ** 2 - 2)) / 2, // 6 - EaseInOutQuad
+      (t: number) => t ** 3, // 7 - EaseInCubic
+      (t: number) => 1 + (t - 1) ** 3, // 8 - EaseOutCubic
+      (t: number) => ((t *= 2) < 1 ? t ** 3 : (t - 2) ** 3 + 2) / 2, // 9 - EaseInOutCubic
+      (t: number) => t ** 4, // 10 - EaseInQuart
+      (t: number) => 1 - (t - 1) ** 4, // 11 - EaseOutQuart
+      (t: number) => ((t *= 2) < 1 ? t ** 4 : -((t - 2) ** 4 - 2)) / 2, // 12 - EaseInOutQuart
+      () => 0, // 13 - Zero
+      () => 1, // 14 - One
+    ];
+    for (const blockArea of this.blockAreas) {
+      blockArea.visible = time >= blockArea.appearTime && time <= blockArea.disappearTime;
+      if (!blockArea.visible) continue;
+
+      // Process move events
+      let activeMoveEvt = blockArea.moveEvents[blockArea.moveEventsIndex];
+      for (let i = blockArea.moveEventsIndex, len = blockArea.moveEvents.length; i < len; i++) {
+        activeMoveEvt = blockArea.moveEvents[i];
+        if (time <= activeMoveEvt.endSeconds) {
+          blockArea.moveEventsIndex = i;
+          break;
+        }
+        if (i === len - 1) blockArea.moveEventsIndex = i;
+      }
+      if (activeMoveEvt) {
+        const i = blockArea.moveEventsIndex;
+        const prevEvt = i > 0 ? blockArea.moveEvents[i - 1] : activeMoveEvt;
+        const startX = i > 0 ? prevEvt.endPosition.x : activeMoveEvt.endPosition.x;
+        const startY = i > 0 ? prevEvt.endPosition.y : activeMoveEvt.endPosition.y;
+        const dt = activeMoveEvt.endSeconds === activeMoveEvt.startSeconds ? 1 : Math.max(0, Math.min(1, (time - activeMoveEvt.startSeconds) / (activeMoveEvt.endSeconds - activeMoveEvt.startSeconds)));
+        const easeX = tweenEases[activeMoveEvt.easeTypeX] || tweenEases[0];
+        const easeY = tweenEases[activeMoveEvt.easeTypeY] || tweenEases[0];
+        const curX = startX + (activeMoveEvt.endPosition.x - startX) * easeX(dt);
+        const curY = startY + (activeMoveEvt.endPosition.y - startY) * easeY(dt);
+        blockArea.offsetX = this.matX(curX);
+        blockArea.offsetY = this.matY(curY);
+      }
+
+      // Process rotate events
+      let activeRotEvt = blockArea.rotateEvents[blockArea.rotateEventsIndex];
+      for (let i = blockArea.rotateEventsIndex, len = blockArea.rotateEvents.length; i < len; i++) {
+        activeRotEvt = blockArea.rotateEvents[i];
+        if (time <= activeRotEvt.endSeconds) {
+          blockArea.rotateEventsIndex = i;
+          break;
+        }
+        if (i === len - 1) blockArea.rotateEventsIndex = i;
+      }
+      if (activeRotEvt) {
+        const i = blockArea.rotateEventsIndex;
+        const prevEvt = i > 0 ? blockArea.rotateEvents[i - 1] : activeRotEvt;
+        const startRot = i > 0 ? prevEvt.rotation : activeRotEvt.rotation;
+        const dt = activeRotEvt.endSeconds === activeRotEvt.startSeconds ? 1 : Math.max(0, Math.min(1, (time - activeRotEvt.startSeconds) / (activeRotEvt.endSeconds - activeRotEvt.startSeconds)));
+        const ease = tweenEases[activeRotEvt.easeType] || tweenEases[0];
+        blockArea.rotation = this.matR(startRot + (activeRotEvt.rotation - startRot) * ease(dt));
+        
+        const startAnchorX = i > 0 ? prevEvt.anchor.x : activeRotEvt.anchor.x;
+        const startAnchorY = i > 0 ? prevEvt.anchor.y : activeRotEvt.anchor.y;
+        blockArea.anchorX = startAnchorX + (activeRotEvt.anchor.x - startAnchorX) * ease(dt);
+        blockArea.anchorY = startAnchorY + (activeRotEvt.anchor.y - startAnchorY) * ease(dt);
+
+        blockArea.cosr = Math.cos(blockArea.rotation);
+        blockArea.sinr = Math.sin(blockArea.rotation);
+      }
+
+      // Process scale events
+      let activeScaleEvt = blockArea.scaleEvents[blockArea.scaleEventsIndex];
+      for (let i = blockArea.scaleEventsIndex, len = blockArea.scaleEvents.length; i < len; i++) {
+        activeScaleEvt = blockArea.scaleEvents[i];
+        if (time <= activeScaleEvt.endSeconds) {
+          blockArea.scaleEventsIndex = i;
+          break;
+        }
+        if (i === len - 1) blockArea.scaleEventsIndex = i;
+      }
+      if (activeScaleEvt) {
+        const i = blockArea.scaleEventsIndex;
+        const prevEvt = i > 0 ? blockArea.scaleEvents[i - 1] : activeScaleEvt;
+        const startScaleX = i > 0 ? prevEvt.scale.x : activeScaleEvt.scale.x;
+        const startScaleY = i > 0 ? prevEvt.scale.y : activeScaleEvt.scale.y;
+        const dt = activeScaleEvt.endSeconds === activeScaleEvt.startSeconds ? 1 : Math.max(0, Math.min(1, (time - activeScaleEvt.startSeconds) / (activeScaleEvt.endSeconds - activeScaleEvt.startSeconds)));
+        const easeX = tweenEases[activeScaleEvt.easeTypeX] || tweenEases[0];
+        const easeY = tweenEases[activeScaleEvt.easeTypeY] || tweenEases[0];
+        blockArea.scaleX = startScaleX + (activeScaleEvt.scale.x - startScaleX) * easeX(dt);
+        blockArea.scaleY = startScaleY + (activeScaleEvt.scale.y - startScaleY) * easeY(dt);
+
+        const startAnchorX = i > 0 ? prevEvt.anchor.x : activeScaleEvt.anchor.x;
+        const startAnchorY = i > 0 ? prevEvt.anchor.y : activeScaleEvt.anchor.y;
+        blockArea.anchorX = startAnchorX + (activeScaleEvt.anchor.x - startAnchorX) * easeX(dt);
+        blockArea.anchorY = startAnchorY + (activeScaleEvt.anchor.y - startAnchorY) * easeY(dt);
       }
     }
   }
@@ -510,17 +682,17 @@ export class Renderer {
     this.hlen = canvasfg.height / 2;
     this.mirrorView();
     this.setNoteScale(this.noteScale);
-    this.lineScale = canvasfg.width > canvasfg.height * 0.75 ? canvasfg.height / 18.75 : canvasfg.width / 14.0625; // 判定线、文字缩放
+    this.lineScale = canvasfg.width > canvasfg.height * 0.75 ? canvasfg.height / 18.75 : canvasfg.width / 14.0625; //   判定线、文字缩放
   }
 }
 export namespace Renderer {
   export type Note = NoteExtends;
   export type JudgeLine = JudgeLineExtends;
 }
-// // 规范判定线事件
+//   // 规范判定线事件
 // function normalizeLineEvent(events: JudgeLineEvent[]) {
-//   const oldEvents = events.map(i => new JudgeLineEvent(i as unknown as Record<string, unknown>)); // 深拷贝
-//   if (!oldEvents.length) return [new JudgeLineEvent({ startTime: -999999, endTime: 1e9 })]; // 如果没有事件，添加一个默认事件(以后添加warning)
+//     const oldEvents = events.map(i => new JudgeLineEvent(i as unknown as Record<string, unknown>)); // 深拷贝
+//     if (!oldEvents.length) return [new JudgeLineEvent({ startTime: -999999, endTime: 1e9 })]; // 如果没有事件，添加一个默认事件(以后添加warning)
 //   const newEvents = [
 //     new JudgeLineEvent({
 //       startTime: -999999,
@@ -530,7 +702,7 @@ export namespace Renderer {
 //       start2: oldEvents[0].start2,
 //       end2: oldEvents[0].start2
 //     })
-//   ]; // 以1-1e6开头
+//     ]; // 以1-1e6开头
 //   oldEvents.push(new JudgeLineEvent({
 //     startTime: oldEvents[oldEvents.length - 1].endTime,
 //     endTime: 1e9,
@@ -538,13 +710,13 @@ export namespace Renderer {
 //     end: oldEvents[oldEvents.length - 1].end,
 //     start2: oldEvents[oldEvents.length - 1].end2,
 //     end2: oldEvents[oldEvents.length - 1].end2
-//   })); // 以1e9结尾
+//     })); // 以1e9结尾
 //   for (const i2 of oldEvents) {
-//     // 保证时间连续性
+//       // 保证时间连续性
 //     if (i2.startTime > i2.endTime) continue;
 //     const i1 = newEvents[newEvents.length - 1];
 //     if (i1.endTime > i2.endTime) {
-//       // 忽略
+//         // 忽略
 //     } else if (i1.endTime === i2.startTime) newEvents.push(i2);
 //     else if (i1.endTime < i2.startTime) {
 //       newEvents.push(new JudgeLineEvent({
@@ -566,14 +738,14 @@ export namespace Renderer {
 //       }));
 //     }
 //   }
-//   // 合并相同变化率事件
+//     // 合并相同变化率事件
 //   const newEvents2 = [newEvents.shift()!];
 //   for (const i2 of newEvents) {
 //     const i1 = newEvents2[newEvents2.length - 1];
 //     const d1 = i1.endTime - i1.startTime;
 //     const d2 = i2.endTime - i2.startTime;
 //     if (i2.startTime === i2.endTime) {
-//       // 忽略
+//         // 忽略
 //     } else if (i1.end === i2.start && i1.end2 === i2.start2 && (i1.end - i1.start) * d2 === (i2.end - i2.start) * d1 && (i1.end2 - i1.start2) * d2 === (i2.end2 - i2.start2) * d1) {
 //       i1.endTime = i2.endTime;
 //       i1.end = i2.end;
@@ -582,7 +754,7 @@ export namespace Renderer {
 //   }
 //   return newEvents2;
 // }
-// // 规范speedEvents
+//   // 规范speedEvents
 // function normalizeSpeedEvent(events: SpeedEvent[]) {
 //   const newEvents = [];
 //   for (const i2 of events) {

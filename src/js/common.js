@@ -1,11 +1,11 @@
-// 全屏相关
+//   全屏相关
 export const full = {
   /**
    * @param {HTMLElement} [elem]
    * @returns {Promise<void>}
    */
   toggle(elem) {
-    // 踩坑：Apple第三方浏览器可能根本没有包含full的属性或方法
+    //   踩坑：Apple第三方浏览器可能根本没有包含full的属性或方法
     if (!this.enabled) return Promise.reject(new Error('Fullscreen is not supported'));
     const onFullscreen = () => new Promise((resolve, reject) => {
       document.addEventListener(this.onchange, resolve, { once: true });
@@ -164,7 +164,7 @@ export const isUndefined = name => self[name] === undefined;
     constructor(message, name) {
       super(message, name);
       if (Error.captureStackTrace) {
-        Error.captureStackTrace(this, DOMException); // 过滤自身stack
+        Error.captureStackTrace(this, DOMException); //   过滤自身stack
       } else {
         this.stack = new Error().stack.replace(/.+\n/, '');
       }

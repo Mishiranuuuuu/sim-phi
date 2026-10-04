@@ -58,34 +58,34 @@ export abstract class MessageHandler {
   private bmsgbox(msg: BetterMessage): BetterMessageBox {
     const msgbox = new BetterMessageBox(msg);
     const page = { page: 1, size: 5, get pages() { return Math.ceil(msgbox.list.length / this.size) } };
-    // 日志文本
+    //   日志文本
     const text = document.createTextNode('');
-    // 按钮[全部忽略]
+    //   按钮[全部忽略]
     const btnIgnoreAll = document.createElement('a');
     btnIgnoreAll.innerText = '全部忽略';
     btnIgnoreAll.classList.add('bm-rbtn');
-    // 当前页数(可编辑)
+    //   当前页数(可编辑)
     const nodePageNum = document.createElement('span');
     nodePageNum.textContent = String(page.page);
     nodePageNum.contentEditable = 'true';
     nodePageNum.style.cssText = ';color:red;outline:none;text-decoration:underline';
-    // 总页数
+    //   总页数
     const nodePages = document.createElement('span');
     nodePages.textContent = String(page.pages);
-    // 按钮[上一页]
+    //   按钮[上一页]
     const btnPrevousPage = document.createElement('a');
     btnPrevousPage.innerText = '上一页';
-    // 按钮[下一页]
+    //   按钮[下一页]
     const btnNextPage = document.createElement('a');
     btnNextPage.innerText = '下一页';
-    // 控制栏
+    //   控制栏
     const nodeControl = document.createElement('div');
     nodeControl.classList.add('bm-item');
     nodeControl.append(nodePageNum, ' / ', nodePages, ' 页 ', btnPrevousPage, ' ', btnNextPage);
-    // 消息框
+    //   消息框
     const nodeBMsg = this.addBox(['notice', 'warn', 'error'][msgbox.code]);
     nodeBMsg.append(text, btnIgnoreAll, nodeControl);
-    // 脚本
+    //   脚本
     btnIgnoreAll.setAttribute('bm-ctrl', '');
     nodeControl.setAttribute('bm-ctrl', '');
     const updatePage = (num: number) => {
@@ -100,7 +100,7 @@ export abstract class MessageHandler {
       this.removeBetterMessageBox(msgbox);
       this.removeNodeBox(nodeBMsg);
     };
-    // 防抖
+    //   防抖
     let timer = 0;
     msgbox.updateHTML = () => {
       clearTimeout(timer);

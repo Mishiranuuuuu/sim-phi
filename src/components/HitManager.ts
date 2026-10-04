@@ -20,18 +20,18 @@ class HitEvent {
     this.id = id;
     this.offsetX = offsetX;
     this.offsetY = offsetY;
-    this.isActive = true; // 是否标记为按下，若false则可以移除
-    this.isTapped = false; // 是否触发过Tap判定
-    this.isMoving = false; // 是否正在移动
+    this.isActive = true; //   是否标记为按下，若false则可以移除
+    this.isTapped = false; //   是否触发过Tap判定
+    this.isMoving = false; //   是否正在移动
     // flick(speed)
     this.lastDeltaX = 0;
     this.lastDeltaY = 0;
     this.nowDeltaX = 0;
     this.nowDeltaY = 0;
-    this.deltaTime = 0; // 按下时间差
-    this.currentTime = performance.now(); // 按下时间
-    this.flicking = false; // 是否触发Flick判定
-    this.flicked = false; // 是否触发过Flick判定
+    this.deltaTime = 0; //   按下时间差
+    this.currentTime = performance.now(); //   按下时间
+    this.flicking = false; //   是否触发Flick判定
+    this.flicked = false; //   是否触发过Flick判定
   }
   public move(offsetX: number, offsetY: number): void {
     this.lastDeltaX = this.nowDeltaX;
@@ -95,8 +95,8 @@ export class JudgeEvent {
     this.offsetX = offsetX;
     this.offsetY = offsetY;
     this.type = type | 0; // 1-Tap,2-Hold/Drag,3-Move
-    this.judged = false; // 是否被判定
-    this.event = event; // Flick专用回调
-    this.preventBad = false; // 是否阻止判定为Bad
+    this.judged = false; //   是否被判定
+    this.event = event; //   Flick专用回调
+    this.preventBad = false; //   是否阻止判定为Bad
   }
 }

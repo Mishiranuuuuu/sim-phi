@@ -19,7 +19,7 @@ import { fixme } from '@/utils/fixme';
 import { MessageHandler } from '@/components/MessageHandler';
 import { AudioController } from '@/utils/AudioTools';
 import { LevelInfoHandler } from '@/components/InfoHandler';
-const meta = ['Phi\x67ros模拟器', version.split('.'), pubdate, lastupdate] as typeof self._i;
+const meta = ['Phi\x67ros Simulator', version.split('.'), pubdate, lastupdate] as typeof self._i;
 self._i = meta;
 const $id = (query: string): HTMLElement => document.getElementById(query) || (() => { throw new Error(`Cannot find element: ${query}`) })();
 const $ = (query: string) => document.body.querySelector(query);
@@ -131,16 +131,16 @@ main.filter = null;
 main.filterOptions = {};
 document.oncontextmenu = e => e.preventDefault();
 for (const thisElem of viewNav.children) {
-  thisElem.addEventListener('click', function(this: HTMLElement) {
+  thisElem.addEventListener('click', function (this: HTMLElement) {
     for (const elem of viewNav.children) elem.classList.toggle('active', elem === this);
-    // if (!viewDoc.src) { viewDoc.src = 'docs/use.html' } // 避免阻塞页面
+    //   if (!viewDoc.src) { viewDoc.src = 'docs/use.html' } // 避免阻塞页面
     // viewDoc.classList.toggle('hide', this.id !== 'nav-use');
     viewCfg.classList.toggle('hide', this.id !== 'nav-cfg');
     viewMsg.classList.toggle('hide', this.id !== 'nav-msg');
   });
 }
 for (const thisElem of viewNav2.children) {
-  thisElem.addEventListener('click', function(this: HTMLElement) {
+  thisElem.addEventListener('click', function (this: HTMLElement) {
     for (const elem of viewNav2.children) elem.classList.toggle('active', elem === this);
     viewRmg.classList.toggle('hide', this.id !== 'nav-rmg');
     viewExt.classList.toggle('hide', this.id !== 'nav-ext');
@@ -157,7 +157,7 @@ buttonRmg.addEventListener('click', () => {
   anchorRmg.click();
 });
 buttonDocs.addEventListener('click', () => {
-  main.fireModal('<p>提示</p>', '<p><a href="https://docs.lchz\x68.net/project/sim-phi-core" target="_blank">点击此处</a>查看使用说明</p>');
+  main.fireModal('<p>Hint</p>', '<p><a href="https://docs.lchz\x68.net/project/sim-phi-core" target="_blank">Click here</a> to view instructions</p>');
 });
 buttonMore.addEventListener('click', () => {
   coverDark.classList.remove('fade');
@@ -228,7 +228,7 @@ class ImageStore {
     return this._blur || this.base;
   }
   public async setBlur() {
-    this.setBlur = async() => {};
+    this.setBlur = async () => { };
     this._blur = await imgBlur(this.base);
   }
 }
@@ -250,19 +250,21 @@ status.reg('highLight', checkHighLight);
 status.reg('lineColor', lineColor);
 status.reg('autoplay', checkAutoPlay);
 status.reg('showTransition', showTransition);
-const resetCfg = new Checkbox('恢复默认设置(刷新生效)').appendTo(viewCfg).hook(status.reg.bind(status, 'resetCfg'));
-const showCE2 = new Checkbox('Early/Late特效').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'showCE2'));
-const showPoint = new Checkbox('显示定位点').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'showPoint'));
-const showAcc = new Checkbox('显示Acc').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'showAcc'));
-const showStat = new Checkbox('显示统计').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'showStat'));
-const lowRes = new Checkbox('低分辨率').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'lowRes'));
-const lockOri = new Checkbox('横屏锁定', true).appendBefore(resetCfg.container).hook(status.reg.bind(status, 'lockOri'));
-const maxFrame = new Checkbox('限制帧率').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'maxFrame'));
-const autoDelay = new Checkbox('音画实时同步(若声音卡顿则建议关闭)', true).appendBefore(resetCfg.container).hook(status.reg.bind(status, 'autoDelay'));
-const enableVP = new Checkbox('隐藏距离较远的音符').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'enableVP'));
+const resetCfg = new Checkbox('Restore default settings (refresh to apply)').appendTo(viewCfg).hook(status.reg.bind(status, 'resetCfg'));
+const showCE2 = new Checkbox('Early/Late Effects').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'showCE2'));
+const showPoint = new Checkbox('Show anchor point').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'showPoint'));
+const debugBlockArea = new Checkbox('Debug blockArea').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'debugBlockArea'));
+const debugBlockAreaText = new Checkbox('Show blockArea debug text').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'debugBlockAreaText'));
+const showAcc = new Checkbox('Show Acc').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'showAcc'));
+const showStat = new Checkbox('Show statistics').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'showStat'));
+const lowRes = new Checkbox('Low resolution').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'lowRes'));
+const lockOri = new Checkbox('Lock landscape', true).appendBefore(resetCfg.container).hook(status.reg.bind(status, 'lockOri'));
+const maxFrame = new Checkbox('Limit frame rate').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'maxFrame'));
+const autoDelay = new Checkbox('Real-time audio sync (turn off if audio stutters)', true).appendBefore(resetCfg.container).hook(status.reg.bind(status, 'autoDelay'));
+const enableVP = new Checkbox('Hide distant notes').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'enableVP'));
 enableVP.checkbox.addEventListener('change', evt => app.enableVP = (evt.target as HTMLInputElement).checked);
 enableVP.checkbox.dispatchEvent(new Event('change'));
-const enableFR = new Checkbox('使用单精度浮点运算').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'enableFR'));
+const enableFR = new Checkbox('Use single-precision floating point').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'enableFR'));
 enableFR.checkbox.addEventListener('change', evt => app.enableFR = (evt.target as HTMLInputElement).checked);
 enableFR.checkbox.dispatchEvent(new Event('change'));
 selectflip.addEventListener('change', evt => app.mirrorView(Number((evt.target as HTMLInputElement).value)));
@@ -272,7 +274,7 @@ selectspeed.addEventListener('change', evt => {
   app.speed = 2 ** ((dict[(evt.target as HTMLInputElement).value.toLowerCase()] ?? 0) / 12);
 });
 status.reg('selectSpeed', selectspeed);
-// 自动填写歌曲信息
+//   自动填写歌曲信息
 function adjustInfo() {
   for (const data of chartInfoDataList) {
     if (selectchart.value.trim() === data.chart) {
@@ -304,18 +306,18 @@ function adjustInfo() {
 }
 // Uploader
 const uploader = new FileEmitter();
-(function() {
+(function () {
   const dones: Record<string, number> = {};
   const totals: Record<string, number> = {};
   let uploaderDone = 0;
   let uploaderTotal = 0;
-  const handleFile = async(tag: string, total: number, promise: unknown, oncomplete?: () => void) => {
+  const handleFile = async (tag: string, total: number, promise: unknown, oncomplete?: () => void) => {
     totals[tag] = total;
     uploaderTotal = Object.values(totals).reduce((a, b) => a + b, 0);
     await (promise instanceof Promise ? promise : Promise.resolve(promise));
     dones[tag] = (dones[tag] || 0) + 1;
     uploaderDone = Object.values(dones).reduce((a, b) => a + b, 0);
-    sendText(`读取文件：${uploaderDone}/${uploaderTotal}`);
+    sendText(`Reading files: ${uploaderDone}/${uploaderTotal}`);
     if (dones[tag] === totals[tag] && oncomplete != null) oncomplete();
     loadComplete();
   };
@@ -323,28 +325,28 @@ const uploader = new FileEmitter();
   let fileTotal = 0;
   const options = { async createAudioBuffer(_: ArrayBuffer) { return audio.decode(_) } };
   const zip = new ZipReader({ handler: async data => reader.read(data, options) });
-  zip.addEventListener('loadstart', () => sendText('加载zip组件...'));
+  zip.addEventListener('loadstart', () => sendText('Loading zip component...'));
   zip.addEventListener('read', evt => { handleFile('zip', zip.total, pick((evt as CustomEvent<ReaderData>).detail)) });
   blockUpload.addEventListener('click', uploader.uploadFile.bind(uploader));
   blockUploadFile.addEventListener('click', uploader.uploadFile.bind(uploader));
   blockUploadDir.addEventListener('click', uploader.uploadDir.bind(uploader));
   uploader.addEventListener('change', loadComplete);
-  uploader.addEventListener('progress', evt => { // 显示加载文件进度
+  uploader.addEventListener('progress', evt => { //   显示加载文件进度
     if (!(evt as ProgressEvent).total) return;
     const percent = Math.floor((evt as ProgressEvent).loaded / (evt as ProgressEvent).total * 100);
-    sendText(`加载文件：${percent}% (${bytefm((evt as ProgressEvent).loaded)}/${bytefm((evt as ProgressEvent).total)})`);
+    sendText(`Loading file: ${percent}% (${bytefm((evt as ProgressEvent).loaded)}/${bytefm((evt as ProgressEvent).total)})`);
   });
   uploader.addEventListener('load', evt => {
     // console.log(evt);
     const { file: { name, webkitRelativePath: path }, buffer } = evt as ProgressEvent & { file: File; buffer: ArrayBuffer };
     const isZip = buffer.byteLength > 4 && new DataView(buffer).getUint32(0, false) === 0x504b0304;
     const data: ByteData = { pathname: path || name, buffer };
-    const handler = async() => {
+    const handler = async () => {
       fileTotal++;
       const result = await reader.read(data, options);
       await handleFile('file', fileTotal, pick(result));
     };
-    // 检测buffer是否为zip
+    //   检测buffer是否为zip
     if (isZip) zip.read(data);
     else handler();
   });
@@ -392,7 +394,7 @@ const uploader = new FileEmitter();
       default:
         console.warn(`Unsupported file: ${data.pathname}`);
         console.log(data.data);
-        sendWarning(`不支持的文件：${data.pathname}\n${data.data as string || 'Error: Unknown File Type'}`);
+        sendWarning(`Unsupported file: ${data.pathname}\n${data.data as string || 'Error: Unknown File Type'}`);
     }
   }
   function createOption(value: string, innerhtml: string) {
@@ -424,7 +426,7 @@ import('@/plugins/demo/index.js').then(a => a.default(isBeta));
 const hitManager = new HitManager();
 const exitFull = () => {
   if (full.onchange) document.removeEventListener(full.onchange, exitFull);
-  hitManager.clear('keyboard'); // Esc退出全屏只有onchange事件能检测到
+  hitManager.clear('keyboard'); //   Esc退出全屏只有onchange事件能检测到
   stage.setFull(full.check());
   stage.resize();
 };
@@ -435,10 +437,10 @@ const timeEnd = new Timer();
 const specialClick = {
   time: [0, 0, 0, 0],
   func: [
-    async() => Promise.resolve().then(mainPause),
-    async() => Promise.resolve().then(mainPlay).then(mainPlay),
-    async() => Promise.resolve().then(() => showStat.toggle()),
-    async() => {
+    async () => Promise.resolve().then(mainPause),
+    async () => Promise.resolve().then(mainPlay).then(mainPlay),
+    async () => Promise.resolve().then(() => showStat.toggle()),
+    async () => {
       const isFull = stage.getFull();
       try {
         await full.toggle();
@@ -447,7 +449,7 @@ const specialClick = {
         if (!lockOri.checked) return;
         await orientation.lockLandscape();
       } catch (e) {
-        console.warn(e); // TODO: 未知错误处理
+        console.warn(e); //   TODO: 未知错误处理
         stage.setFull(!isFull);
       } finally {
         stage.resize();
@@ -460,7 +462,7 @@ const specialClick = {
       this.func[id]().catch((e: unknown) => {
         console.warn(e);
         const msg = e instanceof Error ? e.message : String(e);
-        main.toast(`按太多下了！(${msg})`); // TODO: 忽略操作
+        main.toast(`Pressed too many times! (${msg})`); //   TODO: 忽略操作
       });
     }
     this.time[id] = now;
@@ -484,17 +486,17 @@ function getJudgeDistance(judgeEvent: JudgeEvent, note: Renderer.Note) {
   const { offsetX: x, offsetY: y, cosr, sinr } = note;
   return Math.abs((offsetX - x) * cosr + (offsetY - y) * sinr) + Math.abs((offsetX - x) * sinr - (offsetY - y) * cosr) || 0;
 }
-const res = {} as ResourceMap; // 存放资源
-let nowTimeMS = 0; // 当前绝对时间(ms)
-let curTime = 0; // 最近一次暂停的音乐时间(s)
-let curTimeMS = 0; // 最近一次播放的绝对时间(ms)
-let timeBgm = 0; // 当前音乐时间(s)
-let timeChart = 0; // 当前谱面时间(s)
-let duration0 = 0; // 音乐时长(s)
-let isInEnd = false; // 开头过渡动画
-let isOutStart = false; // 结尾过渡动画
-let isOutEnd = false; // 临时变量
-// 必要组件
+const res = {} as ResourceMap; //   存放资源
+let nowTimeMS = 0; //   当前绝对时间(ms)
+let curTime = 0; //   最近一次暂停的音乐时间(s)
+let curTimeMS = 0; //   最近一次播放的绝对时间(ms)
+let timeBgm = 0; //   当前音乐时间(s)
+let timeChart = 0; //   当前谱面时间(s)
+let duration0 = 0; //   音乐时长(s)
+let isInEnd = false; //   开头过渡动画
+let isOutStart = false; //   结尾过渡动画
+let isOutEnd = false; //   临时变量
+//   必要组件
 const musicController = new AudioController();
 const soundController = new AudioController();
 const frameTimer = new FrameTimer();
@@ -502,13 +504,13 @@ const frameAnimater = new FrameAnimater();
 frameAnimater.setCallback(mainLoop);
 const handlerHide = () => { if (document.visibilityState === 'hidden' && emitter.eq('play')) mainPause(); };
 document.addEventListener('visibilitychange', handlerHide);
-document.addEventListener('pagehide', handlerHide); // 兼容Safari
+document.addEventListener('pagehide', handlerHide); //   兼容Safari
 let isOutOver = false;
 let tempStat = null as StatData | null;
 const tmps = {
   bgImage: null as unknown as ImageBitmap,
   bgVideo: null as HTMLVideoElement | null,
-  bgMusicHack: (_: AudioBufferSourceNode): void => {},
+  bgMusicHack: (_: AudioBufferSourceNode): void => { },
   progress: 0,
   name: '',
   artist: '',
@@ -536,33 +538,33 @@ async function playVideo(data: HTMLVideoElement, offset?: number) {
   data.muted = true;
   await data.play();
 }
-const hitImageList = new HitEvents({ // 存放点击特效
+const hitImageList = new HitEvents({ //   存放点击特效
   updateCallback: (i: HitImage) => nowTimeMS >= i.time + i.duration,
   iterateCallback(i: HitImage) {
     const tick = (nowTimeMS - i.time) / i.duration;
     const { effects } = i;
     ctxfg.globalAlpha = 1;
-    ctxfg.setTransform(app.noteScaleRatio * 6, 0, 0, app.noteScaleRatio * 6, i.offsetX, i.offsetY); // 缩放
+    ctxfg.setTransform(app.noteScaleRatio * 6, 0, 0, app.noteScaleRatio * 6, i.offsetX, i.offsetY); //   缩放
     // ctxfg.rotate(i.rotation);
-    (effects[Math.floor(tick * effects.length)] ?? effects[effects.length - 1]).full(ctxfg); // 停留约0.5秒
+    (effects[Math.floor(tick * effects.length)] ?? effects[effects.length - 1]).full(ctxfg); //   停留约0.5秒
     ctxfg.fillStyle = i.color;
-    ctxfg.globalAlpha = 1 - tick; // 不透明度
-    const r3 = 30 * (((0.2078 * tick - 1.6524) * tick + 1.6399) * tick + 0.4988); // 方块大小
+    ctxfg.globalAlpha = 1 - tick; //   不透明度
+    const r3 = 30 * (((0.2078 * tick - 1.6524) * tick + 1.6399) * tick + 0.4988); //   方块大小
     for (const j of i.direction) {
-      const ds = j[0] * (9 * tick / (8 * tick + 1)); // 打击点距离
+      const ds = j[0] * (9 * tick / (8 * tick + 1)); //   打击点距离
       ctxfg.fillRect(ds * Math.cos(j[1]) - r3 / 2, ds * Math.sin(j[1]) - r3 / 2, r3, r3);
     }
   }
 });
-const hitWordList = new HitEvents({ // 存放点击特效
+const hitWordList = new HitEvents({ //   存放点击特效
   updateCallback: (i: HitWord) => nowTimeMS >= i.time + i.duration,
   iterateCallback(i: HitWord) {
     const tick = (nowTimeMS - i.time) / i.duration;
-    ctxfg.setTransform(1, 0, 0, 1, i.offsetX, i.offsetY); // 缩放
+    ctxfg.setTransform(1, 0, 0, 1, i.offsetX, i.offsetY); //   缩放
     ctxfg.font = `bold ${app.noteScaleRatio * (256 + 128 * (((0.2078 * tick - 1.6524) * tick + 1.6399) * tick + 0.4988))}px Custom,Noto Sans SC`;
     ctxfg.textAlign = 'center';
     ctxfg.fillStyle = i.color;
-    ctxfg.globalAlpha = 1 - tick; // 不透明度
+    ctxfg.globalAlpha = 1 - tick; //   不透明度
     ctxfg.fillText(i.text, 0, -app.noteScaleRatio * 128);
   }
 });
@@ -589,35 +591,35 @@ const judgeManager = {
       for (const evt of hitManager.list) {
         if (!evt.isTapped) list[list.length] = new JudgeEvent(evt.offsetX, evt.offsetY, 1);
         if (evt.isActive) list[list.length] = new JudgeEvent(evt.offsetX, evt.offsetY, 2);
-        if (evt.type === 'keyboard') list[list.length] = new JudgeEvent(evt.offsetX, evt.offsetY, 3); // 以后加上Flick判断
+        if (evt.type === 'keyboard') list[list.length] = new JudgeEvent(evt.offsetX, evt.offsetY, 3); //   以后加上Flick判断
         if (evt.flicking && !evt.flicked) list[list.length] = new JudgeEvent(evt.offsetX, evt.offsetY, 3, evt);
-      // i.flicked = true; 不能在这里判断，因为可能会判定不到
+        //   i.flicked = true; 不能在这里判断，因为可能会判定不到
       }
     }
   },
   execute(notes: Renderer.Note[], seconds: number, width: number) {
     const { list } = this;
     for (const note of notes) {
-      if (note.scored) continue; // 跳过已判分的Note
+      if (note.scored) continue; //   跳过已判分的Note
       const deltaTime = note.seconds - seconds;
-      if (deltaTime > 0.2) break; // 跳过判定范围外的Note
+      if (deltaTime > 0.2) break; //   跳过判定范围外的Note
       if (note.type !== 1 && deltaTime > 0.16) continue;
-      if (deltaTime < -0.16 && note.frameCount > 4 && !note.holdStatus) { // 超时且不为Hold拖判，判为Miss
+      if (deltaTime < -0.16 && note.frameCount > 4 && !note.holdStatus) { //   超时且不为Hold拖判，判为Miss
         // console.log('Miss', i.name);
         note.status = 2;
         stat.addCombo(2, note.type);
         note.scored = true;
-      } else if (note.type === 2) { // Drag音符
+      } else if (note.type === 2) { //   Drag音符
         if (deltaTime > 0) {
           for (const judgeEvent of list) {
-            if (judgeEvent.type !== 1) continue; // 跳过非Tap判定
+            if (judgeEvent.type !== 1) continue; //   跳过非Tap判定
             if (getJudgeOffset(judgeEvent, note) > width) continue;
             judgeEvent.preventBad = true;
           }
         }
         if (note.status !== 4) {
           for (const judgeEvent of list) {
-            if (judgeEvent.type !== 2) continue; // 跳过非Drag判定
+            if (judgeEvent.type !== 2) continue; //   跳过非Drag判定
             if (getJudgeOffset(judgeEvent, note) > width) continue;
             // console.log('Perfect', i.name);
             note.status = 4;
@@ -629,17 +631,17 @@ const judgeManager = {
           stat.addCombo(4, 2);
           note.scored = true;
         }
-      } else if (note.type === 4) { // Flick音符
+      } else if (note.type === 4) { //   Flick音符
         if (deltaTime > 0 || note.status !== 4) {
           for (const judgeEvent of list) {
-            if (judgeEvent.type !== 1) continue; // 跳过非Tap判定
+            if (judgeEvent.type !== 1) continue; //   跳过非Tap判定
             if (getJudgeOffset(judgeEvent, note) > width) continue;
             judgeEvent.preventBad = true;
           }
         }
         if (note.status !== 4) {
           for (const judgeEvent of list) {
-            if (judgeEvent.type !== 3) continue; // 跳过非Move判定
+            if (judgeEvent.type !== 3) continue; //   跳过非Move判定
             if (getJudgeOffset(judgeEvent, note) > width) continue;
             let distance = getJudgeDistance(judgeEvent, note);
             let noteJudge = note;
@@ -671,9 +673,9 @@ const judgeManager = {
           stat.addCombo(4, 4);
           note.scored = true;
         }
-      } else { // Hold音符
-        if (note.type === 3 && note.holdTapTime) { // 是否触发头判
-          if ((performance.now() - note.holdTapTime) * note.holdTime >= 1.6e4 * note.holdSeconds) { // 间隔时间与bpm成反比
+      } else { //   Hold音符
+        if (note.type === 3 && note.holdTapTime) { //   是否触发头判
+          if ((performance.now() - note.holdTapTime) * note.holdTime >= 1.6e4 * note.holdSeconds) { //   间隔时间与bpm成反比
             if (note.holdStatus % 4 === 0) hitImageList.add(HitImage.perfect(note.projectX, note.projectY, note));
             else if (note.holdStatus % 4 === 1) hitImageList.add(HitImage.perfect(note.projectX, note.projectY, note));
             else if (note.holdStatus % 4 === 3) hitImageList.add(HitImage.good(note.projectX, note.projectY, note));
@@ -684,10 +686,10 @@ const judgeManager = {
             if (deltaTime + note.holdSeconds < 0) note.scored = true;
             continue;
           }
-          note.holdBroken = true; // 若1帧内未按住并使其转为false，则判定为Miss
+          note.holdBroken = true; //   若1帧内未按住并使其转为false，则判定为Miss
         }
         for (const judgeEvent of list) {
-          if (note.holdTapTime) { // 头判
+          if (note.holdTapTime) { //   头判
             if (judgeEvent.type !== 2) continue;
             if (getJudgeOffset(judgeEvent, note) <= width) {
               note.holdBroken = false;
@@ -695,8 +697,8 @@ const judgeManager = {
             }
             continue;
           }
-          if (judgeEvent.type !== 1) continue; // 跳过非Tap判定
-          if (judgeEvent.judged) continue; // 跳过已触发的判定
+          if (judgeEvent.type !== 1) continue; //   跳过非Tap判定
+          if (judgeEvent.judged) continue; //   跳过已触发的判定
           if (getJudgeOffset(judgeEvent, note) > width) continue;
           let deltaTime2 = deltaTime;
           let distance = getJudgeDistance(judgeEvent, note);
@@ -755,7 +757,7 @@ const judgeManager = {
             noteJudge.holdBroken = false;
           }
           judgeEvent.judged = true;
-          noteJudge.statOffset = deltaTime2; // TODO: (Replay)也许是统计偏移量？
+          noteJudge.statOffset = deltaTime2; //   TODO: (Replay)也许是统计偏移量？
           if (!nearcomp) break;
         }
         if (emitter.eq('play') && note.holdTapTime && note.holdBroken) {
@@ -767,11 +769,11 @@ const judgeManager = {
     }
   }
 };
-const hitFeedbackList = new HitEvents({ // 存放点击特效
+const hitFeedbackList = new HitEvents({ //   存放点击特效
   updateCallback: (i: HitFeedback) => i.time++ > 0,
   iterateCallback(i: HitFeedback) {
     ctxfg.globalAlpha = 0.85;
-    ctxfg.setTransform(1, 0, 0, 1, i.offsetX, i.offsetY); // 缩放
+    ctxfg.setTransform(1, 0, 0, 1, i.offsetX, i.offsetY); //   缩放
     ctxfg.fillStyle = i.color;
     ctxfg.beginPath();
     ctxfg.arc(0, 0, app.lineScale * 0.5, 0, 2 * Math.PI);
@@ -779,7 +781,7 @@ const hitFeedbackList = new HitEvents({ // 存放点击特效
   }
 });
 const interact = new InteractProxy(canvas);
-// 兼容PC鼠标
+//   兼容PC鼠标
 interact.setMouseEvent({
   mousedownCallback(evt: MouseEvent) {
     const idx = evt.button;
@@ -793,7 +795,7 @@ interact.setMouseEvent({
     const idx = evt.buttons;
     const { x, y } = getPos(evt);
     for (let i = 1; i < 32; i <<= 1) {
-      // 同时按住多个键时，只有最后一个键的move事件会触发
+      //   同时按住多个键时，只有最后一个键的move事件会触发
       if (idx & i) hitManager.moving('mouse', i, x, y);
       else hitManager.deactivate('mouse', i);
     }
@@ -805,13 +807,13 @@ interact.setMouseEvent({
     else hitManager.deactivate('mouse', 1 << idx);
   }
 });
-// 兼容键盘(喵喵喵?)
+//   兼容键盘(喵喵喵?)
 interact.setKeyboardEvent({
   keydownCallback(evt: KeyboardEvent) {
     if (emitter.eq('stop')) return;
     if (evt.key === 'Shift') btnPause.click();
     else if (hitManager.list.find(i => i.type === 'keyboard' && i.id === evt.code) == null) {
-      hitManager.activate('keyboard', evt.code, NaN, NaN); // 按住一个键时，会触发多次keydown事件
+      hitManager.activate('keyboard', evt.code, NaN, NaN); //   按住一个键时，会触发多次keydown事件
     }
   },
   keyupCallback(evt: KeyboardEvent) {
@@ -822,7 +824,7 @@ interact.setKeyboardEvent({
 self.addEventListener('blur', () => {
   hitManager.clear('keyboard');
 });
-// 兼容移动设备
+//   兼容移动设备
 interact.setTouchEvent({
   touchstartCallback(evt: TouchEvent) {
     for (const touch of evt.changedTouches) {
@@ -841,7 +843,7 @@ interact.setTouchEvent({
     for (const touch of evt.changedTouches) hitManager.deactivate('touch', touch.identifier);
   },
   touchcancelCallback(evt: TouchEvent) {
-    // if (emitter.eq('play')) mainPause(); TODO: 意外暂停提醒
+    //   if (emitter.eq('play')) mainPause(); TODO: 意外暂停提醒
     for (const touch of evt.changedTouches) hitManager.deactivate('touch', touch.identifier);
   }
 });
@@ -878,13 +880,13 @@ const noteRender = {
     hitRaw.forEach(img => img.close());
   }
 };
-// 初始化(踩坑：监听DOMContentLoaded似乎会阻塞页面导致长时间白屏)
+//   初始化(踩坑：监听DOMContentLoaded似乎会阻塞页面导致长时间白屏)
 window.addEventListener('load', (): void => {
-  const handler = async(): Promise<void> => {
+  const handler = async (): Promise<void> => {
     canvas.classList.add('fade');
     // let loadedNum = 0;
     // let errorNum = 0;
-    sendText('初始化...');
+    sendText('Initializing...');
     if (await checkSupport({
       messageCallback: sendText,
       warnCallback: sendWarning,
@@ -893,7 +895,7 @@ window.addEventListener('load', (): void => {
       orientNotSupportCallback: () => {
         lockOri.checked = false;
         lockOri.container.classList.add('disabled');
-        lockOri.label.textContent += '(当前设备或浏览器不支持)';
+        lockOri.label.textContent += '(Current device or browser not supported)';
       }
     })) return;
     await import('@/utils/reader-');
@@ -903,7 +905,7 @@ window.addEventListener('load', (): void => {
       alternative: {} as Record<string, string>,
       format: ''
     };
-    // if (!raw) return; // 占位符
+    //   if (!raw) return; // 占位符
     // shit start
     await readResource(raw);
     // .then(result => {
@@ -912,7 +914,7 @@ window.addEventListener('load', (): void => {
     // })
     // shit end
     // if (errorNum) {
-    //   sendError(`错误：${errorNum}个资源加载失败（点击查看详情）`);
+    //     sendError(`错误：${errorNum}个资源加载失败（点击查看详情）`);
     //   return;
     // }
     const entries = ['Tap', 'TapHL', 'Drag', 'DragHL', 'HoldHead', 'HoldHeadHL', 'Hold', 'HoldHL', 'HoldEnd', 'Flick', 'FlickHL'];
@@ -932,10 +934,10 @@ window.addEventListener('load', (): void => {
       b.drawImage(res.JudgeLine, 0, 0);
       return b.getImageData(0, 0, 1, 1).data[0];
     })() === 0) {
-      sendError('检测到图片加载异常，请关闭所有应用程序然后重试');
+      sendError('Image loading anomaly detected, please close all applications and try again');
       return;
     }
-    sendText('等待上传文件...');
+    sendText('Waiting for file upload...');
     blockUploader.classList.remove('disabled');
     blockSelect.classList.remove('disabled');
     emitter.dispatchEvent(new CustomEvent('change'));
@@ -952,7 +954,7 @@ async function loadResource(url: string) {
       alternative: Record<string, string>;
     };
   } catch (err) {
-    sendError('错误：解析资源时出现问题（点击查看详情）', Utils.escapeHTML(`解析资源时出现问题：\n${(err as Error).message}\n原始数据：\n${text}`), true);
+    sendError('Error: Problem parsing resource (click for details)', Utils.escapeHTML(`Problem parsing resource:\n${(err as Error).message}\nRaw data:\n${text}`), true);
     return null;
   }
 }
@@ -967,53 +969,53 @@ async function readResource(raw: {
   const res0: Record<string, string> = {};
   Object.assign(res0, raw.image);
   Object.assign(res0, raw.audio);
-  // 加载资源
+  //   加载资源
   const res1 = [] as Promise<void>[];
   if (raw.format === 'raw') {
-    res1.push(...Object.entries(raw.image).map(async([name, src]) => {
+    res1.push(...Object.entries(raw.image).map(async ([name, src]) => {
       const [url, ext] = src.split('|');
       console.log(url, ext);
       await fetch(url, { referrerPolicy: 'no-referrer' }).then(async a => a.blob()).then(async blob => {
         const img = await createImageBitmap(blob);
         res[name] = img;
-        sendText(`加载资源：${Math.floor(loadedNum++ / res1.length * 100)}%`);
+        sendText(`Loading resource: ${Math.floor(loadedNum++ / res1.length * 100)}%`);
       }).catch(() => {
         errorNum++;
-        sendWarning(`资源加载失败，请检查您的网络连接然后重试：\n${new URL(url, location.toString()).toString()}`);
+        sendWarning(`Resource load failed, please check your network connection and try again:\n${new URL(url, location.toString()).toString()}`);
       });
     }));
-    res1.push(...Object.entries(raw.audio).map(async([name, src]) => {
+    res1.push(...Object.entries(raw.audio).map(async ([name, src]) => {
       await fetch(src, { referrerPolicy: 'no-referrer' }).then(async a => a.arrayBuffer()).then(async buffer => {
         res[name] = await audio.decode(buffer);
-        sendText(`加载资源：${Math.floor(loadedNum++ / res1.length * 100)}%`);
+        sendText(`Loading resource: ${Math.floor(loadedNum++ / res1.length * 100)}%`);
       }).catch(() => {
         errorNum++;
-        sendWarning(`资源加载失败，请检查您的网络连接然后重试：\n${new URL(src, location.toString()).toString()}`);
+        sendWarning(`Resource load failed, please check your network connection and try again:\n${new URL(src, location.toString()).toString()}`);
       });
     }));
   } else {
-    res1.push(...Object.entries(res0).map(async([name, src]) => {
+    res1.push(...Object.entries(res0).map(async ([name, src]) => {
       const [url, ext] = src.split('|') as [string, string | null];
       await fetch(url, { referrerPolicy: 'no-referrer' }).then(async a => a.blob()).then(async blob => {
         const img = await createImageBitmap(blob);
         if (ext != null && ext.startsWith('m')) {
           const data = ImgAny.decode(img, Number(ext.slice(1)));
           img.close();
-          res[name] = await audio.decode(data).catch(async(_e: unknown) => {
+          res[name] = await audio.decode(data).catch(async (_e: unknown) => {
             const blob1 = await fetch(raw.alternative[name], {
               referrerPolicy: 'no-referrer'
             }).then(async i => i.blob());
             return createImageBitmap(blob1).then(ImgAny.decodeAlt).then(async ab => audio.decode(ab)).catch((e: unknown) => {
               const err = e instanceof Error ? e : new Error('Unknown error');
-              sendWarning(`音频加载存在问题，将导致以下音频无法正常播放：\n${name}(${err.message})\n如果多次刷新问题仍然存在，建议更换设备或浏览器。`);
+              sendWarning(`Audio load issue, will cause the following audio to not play properly:\n${name}(${err.message})\nIf the issue persists after refreshing, please change device or browser.`);
               return audio.mute(1);
             });
           });
         } else res[name] = img;
-        sendText(`加载资源：${Math.floor(loadedNum++ / res1.length * 100)}%`);
+        sendText(`Loading resource: ${Math.floor(loadedNum++ / res1.length * 100)}%`);
       }).catch((err: unknown) => {
         console.error(err);
-        sendError(`错误：${errorNum++}个资源加载失败（点击查看详情）`, `资源加载失败，请检查您的网络连接然后重试：\n${new URL(url, location.toString()).toString()}`, true);
+        sendError(`Error: ${errorNum++} resources failed to load (click for details)`, `Resource load failed, please check your network connection and try again:\n${new URL(url, location.toString()).toString()}`, true);
       });
     }));
   }
@@ -1036,13 +1038,13 @@ checkImageBlur.addEventListener('change', () => {
   background.isBlur = checkImageBlur.checked;
 });
 checkImageBlur.dispatchEvent(new Event('change'));
-// 作图
+//   作图
 function mainLoop() {
-  frameTimer.addTick(); // 计算fps
+  frameTimer.addTick(); //   计算fps
   const { lineScale } = app;
   nowTimeMS = performance.now();
   app.resizeCanvas();
-  // 计算时间
+  //   计算时间
   if (timeOut.second < 0.67) {
     loopNoCanvas();
     for (const callback of main.now.values()) callback(timeBgm * app.speed);
@@ -1050,17 +1052,17 @@ function mainLoop() {
   } else if (!isOutOver) {
     isOutOver = true;
     audio.stop();
-    btnPause.classList.add('disabled'); // TODO: 优化
+    btnPause.classList.add('disabled'); //   TODO: 优化
     ctxfg.globalCompositeOperation = 'source-over';
     ctxfg.resetTransform();
     ctxfg.globalAlpha = 1;
     const bgImageBlur = background.getImageBlur();
     ctxfg.drawImage(bgImageBlur, ...adjustSize(bgImageBlur, canvasfg, 1));
-    ctxfg.fillStyle = '#000'; // 背景变暗
-    ctxfg.globalAlpha = app.brightness; // 背景不透明度
+    ctxfg.fillStyle = '#000'; //   背景变暗
+    ctxfg.globalAlpha = app.brightness; //   背景不透明度
     ctxfg.fillRect(0, 0, canvasfg.width, canvasfg.height);
     self.setTimeout(() => {
-      if (!isOutOver) return; // 避免快速重开后直接结算
+      if (!isOutOver) return; //   避免快速重开后直接结算
       const difficulty = levelInfoHandler.getDifficultyIndex();
       musicController.play(res[`LevelOver${difficulty < 0 ? 2 : difficulty}_v1`] as AudioBuffer, { loop: true });
       timeEnd.reset();
@@ -1068,7 +1070,7 @@ function mainLoop() {
       stat.level = levelInfoHandler.getLevelNumber();
       tempStat = stat.getData(app.playMode === 1, selectspeed.value);
     }, 1e3);
-  } // 只让它执行一次
+  } //   只让它执行一次
   if (tempStat != null) atDraw3(tempStat);
   ctx.globalAlpha = 1;
   const bgImageBlur = background.getImageBlur();
@@ -1085,27 +1087,27 @@ function mainLoop() {
   ctx.fillStyle = '#fff';
   ctx.globalAlpha = 0.8;
   ctx.textAlign = 'right';
-  ctx.fillText(`Phi\x67ros Simulator v${meta[1].join('.')} - Code by lchz\x683\x3473`, (canvas.width + canvasfg.width) / 2 - lineScale * 0.1, canvas.height - lineScale * 0.1);
+  ctx.fillText(`Phi\x67ros Simulator v${meta[1].join('.')} - Code by lchz\x683\x3473\nModed by WakaranaiDesu`, (canvas.width + canvasfg.width) / 2 - lineScale * 0.1, canvas.height - lineScale * 0.1);
   ctx.globalCompositeOperation = 'source-over';
 }
 function loopNoCanvas() {
   if (app.chart == null) throw new Error('Not initialized: Chart');
-  if (!isInEnd && timeIn.second >= 3 && emitter.eq('play')) { // fixed: 修复关闭过渡动画时重开1帧内点击暂停产生显示暂停实际音乐播放的问题
+  if (!isInEnd && timeIn.second >= 3 && emitter.eq('play')) { //   fixed: 修复关闭过渡动画时重开1帧内点击暂停产生显示暂停实际音乐播放的问题
     isInEnd = true;
     playBgm(app.bgMusic);
     if (app.bgVideo != null) playVideo(app.bgVideo);
   }
   if (emitter.eq('play') && isInEnd && !isOutStart) timeBgm = curTime + (nowTimeMS - curTimeMS) / 1e3;
-  if (timeBgm < 0) timeBgm = 0; // fixed: 修复重开后时间轴不归零的问题
+  if (timeBgm < 0) timeBgm = 0; //   fixed: 修复重开后时间轴不归零的问题
   if (timeBgm >= duration0) isOutStart = true;
   if (showTransition.checked && isOutStart && !isOutEnd) {
     isOutEnd = true;
     timeOut.play();
   }
   timeChart = Math.max(timeBgm - (app.chart.offset + Number(inputOffset.value) / 1e3 || 0) / app.speed, 0);
-  // 遍历判定线events和Note
+  //   遍历判定线events和Note
   app.updateByTime(timeChart);
-  // 更新打击特效和触摸点动画
+  //   更新打击特效和触摸点动画
   hitFeedbackList.update();
   hitImageList.update();
   hitWordList.update();
@@ -1113,9 +1115,9 @@ function loopNoCanvas() {
     if (evt.type === 'keyboard') continue;
     if (!evt.isTapped) hitFeedbackList.add(HitFeedback.tap(evt.offsetX, evt.offsetY));
     else if (evt.isMoving) hitFeedbackList.add(HitFeedback.move(evt.offsetX, evt.offsetY));
-    else if (evt.isActive) hitFeedbackList.add(HitFeedback.hold(evt.offsetX, evt.offsetY)); // TODO: 动态特效
+    else if (evt.isActive) hitFeedbackList.add(HitFeedback.hold(evt.offsetX, evt.offsetY)); //   TODO: 动态特效
   }
-  // 触发判定和播放打击音效
+  //   触发判定和播放打击音效
   if (isInEnd) {
     const judgeWidth = canvasfg.width * 0.118125;
     judgeManager.addEvent(app.notes, timeChart);
@@ -1123,7 +1125,7 @@ function loopNoCanvas() {
     judgeManager.execute(app.flicks, timeChart, judgeWidth);
     judgeManager.execute(app.tapholds, timeChart, judgeWidth);
   }
-  // 更新判定
+  //   更新判定
   hitManager.update();
   // if (awawa && stat.good + stat.bad) {
   //   stat.level = Number(levelText.match(/\d+$/));
@@ -1152,8 +1154,8 @@ function loopNoCanvas() {
 function loopCanvas() {
   const { lineScale, wlen, hlen } = app;
   const { bgImage, bgVideo } = tmps;
-  ctxfg.clearRect(0, 0, canvasfg.width, canvasfg.height); // 重置画面
-  // 绘制背景
+  ctxfg.clearRect(0, 0, canvasfg.width, canvasfg.height); //   重置画面
+  //   绘制背景
   ctxfg.globalAlpha = 1;
   ctxfg.drawImage(bgImage, ...adjustSize(bgImage, canvasfg, 1));
   if (isInEnd && bgVideo != null && !main.awawa) {
@@ -1161,22 +1163,23 @@ function loopCanvas() {
     ctxfg.drawImage(bgVideo, ...adjustSize({ width, height }, canvasfg, 1));
   }
   // if (awawa) ctxfg.filter = `hue-rotate(${stat.combo*360/7}deg)`;
-  if (timeIn.second >= 2.5 && !stat.lineStatus) drawLine(0, lineScale); // 绘制判定线(背景后0)
+  if (timeIn.second >= 2.5 && !stat.lineStatus) drawLine(0, lineScale); //   绘制判定线(背景后0)
   // if (awawa) ctxfg.filter = 'none';
   ctxfg.resetTransform();
-  ctxfg.fillStyle = '#000'; // 背景变暗
-  ctxfg.globalAlpha = app.brightness; // 背景不透明度
+  ctxfg.fillStyle = '#000'; //   背景变暗
+  ctxfg.globalAlpha = app.brightness; //   背景不透明度
   ctxfg.fillRect(0, 0, canvasfg.width, canvasfg.height);
-  if (timeIn.second >= 2.5 && tmps.customBackDraw != null) tmps.customBackDraw(ctxfg); // 自定义背景
+  if (timeIn.second >= 2.5 && tmps.customBackDraw != null) tmps.customBackDraw(ctxfg); //   自定义背景
   // if (awawa) ctxfg.filter = `hue-rotate(${stat.combo*360/7}deg)`;
-  if (timeIn.second >= 2.5) drawLine(stat.lineStatus ? 2 : 1, lineScale); // 绘制判定线(背景前1)
+  if (timeIn.second >= 2.5) drawLine(stat.lineStatus ? 2 : 1, lineScale); //   绘制判定线(背景前1)
   // if (awawa) ctxfg.filter = 'none';
   ctxfg.resetTransform();
   if (timeIn.second >= 3 && timeOut.second === 0) {
-    // 绘制note
+    drawBlockAreas();
+    //   绘制note
     drawNotes();
     if (showPoint.checked) {
-      // 绘制定位点
+      //   绘制定位点
       ctxfg.font = `${lineScale}px Custom,Noto Sans SC`;
       ctxfg.textAlign = 'center';
       for (const line of app.linesReversed) {
@@ -1199,30 +1202,66 @@ function loopCanvas() {
         ctxfg.fillText(note.name, 0, -lineScale * 0.3);
       }
     }
+    if (debugBlockArea.checked || debugBlockAreaText.checked) {
+      ctxfg.font = `${lineScale}px Custom,Noto Sans SC`;
+      ctxfg.textAlign = 'center';
+      const debugTexts: string[] = [];
+      for (let i = 0; i < app.blockAreas.length; i++) {
+        const blockArea = app.blockAreas[i];
+        if (!blockArea.visible) continue;
+
+        if (debugBlockAreaText.checked) {
+          const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
+          debugTexts.push(`[Visible] BA${i}: active=${isActive}, isSub=${blockArea.isSubtract}, pos=(${blockArea.offsetX.toFixed(1)}, ${blockArea.offsetY.toFixed(1)}), scale=(${blockArea.scaleX.toFixed(2)}, ${blockArea.scaleY.toFixed(2)}), tr=(${blockArea.topRightPercentage.x.toFixed(2)}, ${blockArea.topRightPercentage.y.toFixed(2)}), bl=(${blockArea.bottomLeftPercentage.x.toFixed(2)}, ${blockArea.bottomLeftPercentage.y.toFixed(2)})`);
+        }
+
+        if (debugBlockArea.checked) {
+          ctxfg.setTransform(blockArea.cosr, blockArea.sinr, -blockArea.sinr, blockArea.cosr, blockArea.offsetX, blockArea.offsetY);
+          ctxfg.globalAlpha = 1;
+          ctxfg.fillStyle = 'orange';
+          ctxfg.fillRect(-lineScale * 0.2, -lineScale * 0.2, lineScale * 0.4, lineScale * 0.4);
+          ctxfg.fillStyle = 'white';
+          ctxfg.fillText(`BA${i}`, 0, -lineScale * 0.3);
+        }
+      }
+
+      if (debugBlockAreaText.checked) {
+        ctxfg.resetTransform();
+        ctxfg.textAlign = 'left';
+        ctxfg.font = `${lineScale * 0.55}px Custom,Noto Sans SC`;
+        ctxfg.fillStyle = 'white';
+        ctxfg.globalAlpha = 1;
+        let textY = lineScale * 2.5;
+        for (const text of debugTexts) {
+          ctxfg.fillText(text, lineScale, textY);
+          textY += lineScale * 0.7;
+        }
+      }
+    }
   }
   // if (awawa) ctxfg.filter = `hue-rotate(${stat.combo*360/7}deg)`;
-  hitImageList.animate(); // 绘制打击特效1
+  hitImageList.animate(); //   绘制打击特效1
   // if (awawa) ctxfg.filter = 'none';
-  if (showCE2.checked) hitWordList.animate(); // 绘制打击特效2
+  if (showCE2.checked) hitWordList.animate(); //   绘制打击特效2
   ctxfg.globalAlpha = 1;
-  // 绘制进度条
+  //   绘制进度条
   ctxfg.setTransform(canvasfg.width / 1920, 0, 0, canvasfg.width / 1920, 0, lineScale * (timeIn.second < 0.67 ? tween.easeOutSine(timeIn.second * 1.5) - 1 : -tween.easeOutSine(timeOut.second * 1.5)) * 1.75);
   ctxfg.drawImage(res.ProgressBar, tmps.progress * 1920 - 1920, 0);
-  // 绘制文字
+  //   绘制文字
   ctxfg.resetTransform();
   for (const callback of main.after.values()) callback();
   ctxfg.fillStyle = '#fff';
-  // 开头过渡动画
+  //   开头过渡动画
   if (timeIn.second < 3) {
     if (timeIn.second < 0.67) ctxfg.globalAlpha = tween.easeOutSine(timeIn.second * 1.5);
     else if (timeIn.second >= 2.5) ctxfg.globalAlpha = tween.easeOutSine(6 - timeIn.second * 2);
     ctxfg.textAlign = 'center';
-    // 曲名、曲师、曲绘和谱师
+    //   曲名、曲师、曲绘和谱师
     fillTextNode(tmps.name, wlen, hlen * 0.75, lineScale * 1.1, canvasfg.width - lineScale * 1.5);
     fillTextNode(tmps.artist, wlen, hlen * 0.75 + lineScale * 1.25, lineScale * 0.55, canvasfg.width - lineScale * 1.5);
     fillTextNode(tmps.illustrator, wlen, hlen * 1.25 + lineScale * 0.55, lineScale * 0.55, canvasfg.width - lineScale * 1.5);
     fillTextNode(tmps.charter, wlen, hlen * 1.25 + lineScale * 1.4, lineScale * 0.55, canvasfg.width - lineScale * 1.5);
-    // 判定线(装饰用)
+    //   判定线(装饰用)
     ctxfg.globalAlpha = 1;
     ctxfg.setTransform(1, 0, 0, 1, wlen, hlen);
     const imgW = lineScale * 48 * (timeIn.second < 0.67 ? tween.easeInSine(timeIn.second * 1.5) : 1);
@@ -1230,7 +1269,7 @@ function loopCanvas() {
     if (timeIn.second >= 2.5) ctxfg.globalAlpha = tween.easeOutSine(6 - timeIn.second * 2);
     ctxfg.drawImage(lineColor.checked ? res.JudgeLineMP : res.JudgeLine, -imgW / 2, -imgH / 2, imgW, imgH);
   }
-  // 绘制分数和combo
+  //   绘制分数和combo
   ctxfg.globalAlpha = 1;
   ctxfg.setTransform(1, 0, 0, 1, 0, lineScale * (timeIn.second < 0.67 ? tween.easeOutSine(timeIn.second * 1.5) - 1 : -tween.easeOutSine(timeOut.second * 1.5)) * 1.75);
   if (tmps.showStat) {
@@ -1248,7 +1287,7 @@ function loopCanvas() {
   ctxfg.globalAlpha = timeIn.second < 0.67 ? tween.easeOutSine(timeIn.second * 1.5) : 1 - tween.easeOutSine(timeOut.second * 1.5);
   ctxfg.font = `${lineScale * 0.66}px Custom,Noto Sans SC`;
   ctxfg.fillText(tmps.combo2, wlen, lineScale * 2.05);
-  // 绘制曲名和等级
+  //   绘制曲名和等级
   ctxfg.globalAlpha = 1;
   ctxfg.setTransform(1, 0, 0, 1, 0, lineScale * (timeIn.second < 0.67 ? 1 - tween.easeOutSine(timeIn.second * 1.5) : tween.easeOutSine(timeOut.second * 1.5)) * 1.75);
   ctxfg.textAlign = 'right';
@@ -1256,7 +1295,7 @@ function loopCanvas() {
   ctxfg.textAlign = 'left';
   fillTextNode(tmps.name, lineScale * 0.65, canvasfg.height - lineScale * 0.66, lineScale * 0.63, wlen - lineScale);
   ctxfg.resetTransform();
-  // 绘制时间和帧率以及note打击数
+  //   绘制时间和帧率以及note打击数
   ctxfg.fillStyle = '#fff';
   if (timeIn.second < 0.67) ctxfg.globalAlpha = tween.easeOutSine(timeIn.second * 1.5);
   else ctxfg.globalAlpha = 1 - tween.easeOutSine(timeOut.second * 1.5);
@@ -1286,12 +1325,12 @@ function loopCanvas() {
   }
   if (timeIn.second >= 2.5 && timeIn.second < 3) ctxfg.globalAlpha = 1 - tween.easeOutSine(6 - timeIn.second * 2);
   else ctxfg.globalAlpha = 1 - tween.easeOutSine(timeOut.second * 1.5);
-  if (timeIn.second >= 2.5 && tmps.customForeDraw != null) tmps.customForeDraw(ctxfg); // 自定义前景
-  if (timeIn.second >= 2.5 && main.filter != null) main.filter(ctxfg, timeBgm, nowTimeMS / 1e3); // 滤镜处理
-  if (checkFeedback.checked) hitFeedbackList.animate(); // 绘制打击特效0
+  if (timeIn.second >= 2.5 && tmps.customForeDraw != null) tmps.customForeDraw(ctxfg); //   自定义前景
+  if (timeIn.second >= 2.5 && main.filter != null) main.filter(ctxfg, timeBgm, nowTimeMS / 1e3); //   滤镜处理
+  if (checkFeedback.checked) hitFeedbackList.animate(); //   绘制打击特效0
   ctxfg.resetTransform();
 }
-// 判定线函数，undefined/0:默认,1:非,2:恒成立
+//   判定线函数，undefined/0:默认,1:非,2:恒成立
 function drawLine(bool: number, lineScale: number) {
   const tw = 1 - tween.easeOutSine(timeOut.second * 1.5);
   for (const line of app.linesReversed) {
@@ -1319,8 +1358,8 @@ function atDraw3(statData: StatData) {
   ctxfg.globalAlpha = 1;
   const bgImageBlur = background.getImageBlur();
   ctxfg.drawImage(bgImageBlur, ...adjustSize(bgImageBlur, canvasfg, 1));
-  ctxfg.fillStyle = '#000'; // 背景变暗
-  ctxfg.globalAlpha = app.brightness; // 背景不透明度
+  ctxfg.fillStyle = '#000'; //   背景变暗
+  ctxfg.globalAlpha = app.brightness; //   背景不透明度
   ctxfg.fillRect(0, 0, canvasfg.width, canvasfg.height);
   ctxfg.globalCompositeOperation = 'destination-out';
   ctxfg.globalAlpha = 1;
@@ -1337,19 +1376,19 @@ function atDraw3(statData: StatData) {
   ctxfg.globalCompositeOperation = 'source-over';
   ctxfg.globalAlpha = 1;
   ctxfg.drawImage(res.LevelOver5, 700 * tween.easeOutCubic(clip(timeEnd.second * 1.25)) - 369, 91, 20, 80);
-  // 曲名和等级
+  //   曲名和等级
   ctxfg.fillStyle = '#fff';
   ctxfg.textAlign = 'left';
   fillTextNode(inputName.value || inputName.placeholder, 700 * tween.easeOutCubic(clip(timeEnd.second * 1.25)) - 320, 160, 80, 1500);
   const textWidth = fillTextNode(levelInfoHandler.text, 700 * tween.easeOutCubic(clip(timeEnd.second * 1.25)) - 317, 212, 30, 750);
   ctxfg.font = '30px Custom,Noto Sans SC';
-  // Rank图标
+  //   Rank图标
   ctxfg.globalAlpha = clip((timeEnd.second - 1.87) * 3.75);
   const outerSize = 293 + clip((timeEnd.second - 1.87) * 3.75) * 100;
   const innerSize = 410 - clip((timeEnd.second - 1.87) * 2.14) * 164;
   ctxfg.drawImage(res.LevelOver3, 661 - outerSize / 2, 545 - outerSize / 2, outerSize, outerSize);
   ctxfg.drawImage(res.Ranks[stat.rankStatus], 661 - innerSize / 2, 545 - innerSize / 2, innerSize, innerSize);
-  // 各种数据
+  //   各种数据
   ctxfg.globalAlpha = clip((timeEnd.second - 0.87) * 2.5);
   ctxfg.fillStyle = statData.newBestColor;
   ctxfg.fillText(statData.newBestStr, 898, 433);
@@ -1415,7 +1454,128 @@ interface ScaledHitFX {
   numOfParts: number;
   duration: number;
 }
-// 绘制Note
+let noiseCanvas: HTMLCanvasElement | null = null;
+let noiseCtx: CanvasRenderingContext2D | null = null;
+
+function drawBlockAreas() {
+  if (app.blockAreas.length === 0) return;
+
+  if (!noiseCanvas) {
+    noiseCanvas = document.createElement('canvas');
+    noiseCtx = noiseCanvas.getContext('2d');
+  }
+
+  if (noiseCanvas.width !== ctxfg.canvas.width || noiseCanvas.height !== ctxfg.canvas.height) {
+    noiseCanvas.width = ctxfg.canvas.width;
+    noiseCanvas.height = ctxfg.canvas.height;
+  }
+
+  noiseCtx!.clearRect(0, 0, noiseCanvas.width, noiseCanvas.height);
+
+  function getTransformAndDim(blockArea: any) {
+    const topX = blockArea.topRightPercentage.x * ctxfg.canvas.width;
+    const topY = blockArea.topRightPercentage.y * ctxfg.canvas.height;
+    const botX = blockArea.bottomLeftPercentage.x * ctxfg.canvas.width;
+    const botY = blockArea.bottomLeftPercentage.y * ctxfg.canvas.height;
+
+    const width = Math.abs(topX - botX);
+    const height = Math.abs(topY - botY);
+    const x = -width / 2;
+    const y = -height / 2;
+    return { width, height, x, y };
+  }
+
+  function setCtxTransform(ctx: CanvasRenderingContext2D, blockArea: any) {
+    ctx.setTransform(
+      blockArea.scaleX * blockArea.cosr,
+      blockArea.scaleX * blockArea.sinr,
+      -blockArea.scaleY * blockArea.sinr,
+      blockArea.scaleY * blockArea.cosr,
+      blockArea.offsetX,
+      blockArea.offsetY
+    );
+  }
+
+  // Pass 1: Draw normal blocks (Fill and Stroke)
+  noiseCtx!.globalCompositeOperation = 'source-over';
+  for (let i = 0; i < app.blockAreas.length; i++) {
+    const blockArea = app.blockAreas[i];
+    if (!blockArea.visible || blockArea.isSubtract) continue;
+
+    const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
+    const timeToActive = blockArea.enableTime - timeChart;
+    const isPulsing = timeToActive > 0 && timeToActive <= 1.0;
+
+    const { width, height, x, y } = getTransformAndDim(blockArea);
+
+    noiseCtx!.save();
+    setCtxTransform(noiseCtx!, blockArea);
+
+    if (isActive) {
+      noiseCtx!.fillStyle = 'rgba(255, 0, 0, 0.45)';
+      noiseCtx!.fillRect(x, y, width, height);
+      noiseCtx!.strokeStyle = 'rgba(255, 50, 50, 0.9)';
+      noiseCtx!.lineWidth = 1;
+      noiseCtx!.strokeRect(x, y, width, height);
+    } else {
+      noiseCtx!.fillStyle = 'rgba(255, 0, 0, 0.15)';
+      noiseCtx!.fillRect(x, y, width, height);
+      noiseCtx!.strokeStyle = 'rgba(255, 0, 0, 0.9)';
+      noiseCtx!.lineWidth = 1;
+      noiseCtx!.strokeRect(x, y, width, height);
+
+      if (isPulsing) {
+        const pulseAlpha = ((Math.sin(timeChart * Math.PI * 4) + 1) / 2) * 0.35;
+        noiseCtx!.fillStyle = `rgba(255, 255, 255, ${pulseAlpha})`;
+        noiseCtx!.fillRect(x, y, width, height);
+      }
+    }
+    noiseCtx!.restore();
+  }
+
+  // Pass 2: Draw subtract blocks (isSubtract = true)
+  noiseCtx!.globalCompositeOperation = 'source-over';
+  for (let i = 0; i < app.blockAreas.length; i++) {
+    const blockArea = app.blockAreas[i];
+    if (!blockArea.visible || !blockArea.isSubtract) continue;
+
+    const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
+    const timeToActive = blockArea.enableTime - timeChart;
+    const isPulsing = timeToActive > 0 && timeToActive <= 1.0;
+
+    const { width, height, x, y } = getTransformAndDim(blockArea);
+
+    noiseCtx!.save();
+    setCtxTransform(noiseCtx!, blockArea);
+
+    if (isActive) {
+      noiseCtx!.fillStyle = 'rgba(255, 0, 0, 0.45)';
+      noiseCtx!.fillRect(x, y, width, height);
+      noiseCtx!.strokeStyle = 'rgba(0, 255, 0, 0.9)';
+      noiseCtx!.lineWidth = 1;
+      noiseCtx!.strokeRect(x, y, width, height);
+    } else {
+      noiseCtx!.fillStyle = 'rgba(255, 0, 0, 0.15)';
+      noiseCtx!.fillRect(x, y, width, height);
+      noiseCtx!.strokeStyle = 'rgba(0, 255, 0, 0.9)';
+      noiseCtx!.lineWidth = 1;
+      noiseCtx!.strokeRect(x, y, width, height);
+
+      if (isPulsing) {
+        const pulseAlpha = ((Math.sin(timeChart * Math.PI * 4) + 1) / 2) * 0.35;
+        noiseCtx!.fillStyle = `rgba(255, 255, 255, ${pulseAlpha})`;
+        noiseCtx!.fillRect(x, y, width, height);
+      }
+    }
+    noiseCtx!.restore();
+  }
+
+  // Draw final result to the main canvas
+  ctxfg.globalCompositeOperation = 'source-over';
+  ctxfg.drawImage(noiseCanvas, 0, 0);
+}
+
+//   绘制Note
 function drawNotes() {
   for (const note of app.holds) drawHold(note, timeChart);
   for (const note of app.dragsReversed) drawDrag(note);
@@ -1429,7 +1589,7 @@ function drawTap(note: Renderer.Note) {
   ctxfg.setTransform(nsr * note.cosr, nsr * note.sinr, -nsr * note.sinr, nsr * note.cosr, note.offsetX, note.offsetY);
   if (note.badTime == null) {
     ctxfg.globalAlpha = note.alpha || (note.showPoint && showPoint.checked ? 0.45 : 0);
-    if (main.awawa) ctxfg.globalAlpha *= Math.max(1 + (timeChart - note.seconds) / 1.5, 0); // 过线前1.5s出现
+    if (main.awawa) ctxfg.globalAlpha *= Math.max(1 + (timeChart - note.seconds) / 1.5, 0); //   过线前1.5s出现
     noteRender.note[HL ? 'TapHL' : 'Tap'].full(ctxfg);
   } else {
     ctxfg.globalAlpha = 1 - clip((performance.now() - note.badTime) / 500);
@@ -1452,7 +1612,7 @@ function drawDrag(note: Renderer.Note) {
 function drawHold(note: Renderer.Note, seconds: number) {
   const HL = note.isMulti && app.multiHint;
   const nsr = app.noteScaleRatio;
-  if (!note.visible || note.seconds + note.holdSeconds < seconds) return; // 不绘制时空超界的Hold
+  if (!note.visible || note.seconds + note.holdSeconds < seconds) return; //   不绘制时空超界的Hold
   ctxfg.globalAlpha = note.alpha || (note.showPoint && showPoint.checked ? 0.45 : 0);
   if (main.awawa) ctxfg.globalAlpha *= Math.max(1 + (timeChart - note.seconds) / 1.5, 0);
   ctxfg.setTransform(nsr * note.cosr, nsr * note.sinr, -nsr * note.sinr, nsr * note.cosr, note.offsetX, note.offsetY);
@@ -1507,11 +1667,11 @@ const updateLineImage = (image: ImageBitmap) => {
   if (!lineImages.has(image)) lineImages.set(image, lineImage);
   return lineImage;
 };
-// rgba数组(0-1)转十六进制
+//   rgba数组(0-1)转十六进制
 // function rgba2hex(...rgba:number[]) {
 //   return '#' + rgba.map(i => ('00' + Math.round(Number(i) * 255 || 0).toString(16)).slice(-2)).join('');
 // }
-// byte转人类可读
+//   byte转人类可读
 function bytefm(byte = 0) {
   let result = byte;
   if (result < 1024) return `${result}B`;
@@ -1549,11 +1709,11 @@ selectbg.onchange = () => {
   if (bg) bg.setBlur();
 };
 selectchart.addEventListener('change', adjustInfo);
-(function() {
+(function () {
   const input = document.createElement('input');
   Object.assign(input, { type: 'number', min: 25, max: 1000, value: 60 });
   input.style.cssText += ';width:50px;margin-left:10px';
-  input.addEventListener('change', function(this: HTMLInputElement) {
+  input.addEventListener('change', function (this: HTMLInputElement) {
     const value = Number(this.value);
     if (value < 25) this.value = '25';
     if (value > 1000) this.value = '1000';
@@ -1561,7 +1721,7 @@ selectchart.addEventListener('change', adjustInfo);
   });
   status.reg('maxFrameNumber', input, false);
   maxFrame.container.appendChild(input);
-  maxFrame.checkbox.addEventListener('change', function(this: HTMLInputElement) {
+  maxFrame.checkbox.addEventListener('change', function (this: HTMLInputElement) {
     input.classList.toggle('disabled', !this.checked);
     if (this.checked) input.dispatchEvent(new Event('change'));
     else frameAnimater.setFrameRate(0);
@@ -1569,17 +1729,17 @@ selectchart.addEventListener('change', adjustInfo);
   maxFrame.checkbox.dispatchEvent(new Event('change'));
 }());
 // Play
-emitter.addEventListener('change', function(this: Emitter) {
+emitter.addEventListener('change', function (this: Emitter) {
   canvas.classList.toggle('fade', this.eq('stop'));
   blockMask.classList.toggle('fade', this.ne('stop'));
-  btnPlay.value = this.eq('stop') ? '播放' : '停止';
-  btnPause.value = this.eq('pause') ? '继续' : '暂停';
+  btnPlay.value = this.eq('stop') ? 'Play' : 'Stop';
+  btnPause.value = this.eq('pause') ? 'Resume' : 'Pause';
   btnPause.classList.toggle('disabled', this.eq('stop'));
   for (const elem of $$('.disabled-when-playing')) elem.classList.toggle('disabled', this.ne('stop'));
   // console.log(this);
 });
-btnPlay.addEventListener('click', function(this: HTMLInputElement) {
-  const handler = async() => {
+btnPlay.addEventListener('click', function (this: HTMLInputElement) {
+  const handler = async () => {
     if (this.classList.contains('disabled')) return;
     this.classList.add('disabled');
     await mainPlay();
@@ -1587,8 +1747,8 @@ btnPlay.addEventListener('click', function(this: HTMLInputElement) {
   };
   handler();
 });
-btnPause.addEventListener('click', function(this: HTMLInputElement) {
-  const handler = async() => {
+btnPause.addEventListener('click', function (this: HTMLInputElement) {
+  const handler = async () => {
     if (this.classList.contains('disabled')) return;
     this.classList.add('disabled');
     await mainPause();
@@ -1596,19 +1756,19 @@ btnPause.addEventListener('click', function(this: HTMLInputElement) {
   };
   handler();
 });
-inputOffset.addEventListener('input', function(this: HTMLInputElement) {
+inputOffset.addEventListener('input', function (this: HTMLInputElement) {
   const value = Number(this.value);
   if (value < -400) this.value = '-400';
   if (value > 600) this.value = '600';
 });
-status2.reg(emitter, 'change', () => main.awawa ? 'Reversed' : ''); // TODO: 重构
+status2.reg(emitter, 'change', () => main.awawa ? 'Reversed' : ''); //   TODO: 重构
 status2.reg(selectflip, 'change', target => ['', 'FlipX', 'FlipY', 'FlipX&Y'][Number((target as HTMLSelectElement).value)]);
 status2.reg(selectspeed, 'change', target => (target as HTMLSelectElement).value);
 status2.reg(emitter, 'change', target => (target as Emitter).eq('pause') ? 'Paused' : '');
 async function mainPlay(): Promise<void> {
   if (emitter.eq('stop')) {
     if (!selectchart.value) {
-      main.error('未选择任何谱面');
+      main.error('No chart selected');
       return;
     }
     for (const callback of main.before.values()) await callback();
@@ -1627,7 +1787,7 @@ async function mainPlay(): Promise<void> {
     isOutEnd = false;
     timeBgm = 0;
     if (!showTransition.checked) timeIn.addTime(3e3);
-    audio.play(res.mute, { loop: true }); // 播放空音频(避免音画不同步)
+    audio.play(res.mute, { loop: true }); //   播放空音频(避免音画不同步)
     frameAnimater.start();
     timeIn.play();
     interact.activate();
@@ -1637,7 +1797,7 @@ async function mainPlay(): Promise<void> {
     interact.deactive();
     audio.stop();
     frameAnimater.stop();
-    // 清除原有数据
+    //   清除原有数据
     isOutOver = false;
     tempStat = null;
     hitFeedbackList.clear();
@@ -1653,7 +1813,7 @@ async function mainPlay(): Promise<void> {
   }
 }
 async function loadLineData({
-  onwarn = (_: string) => {}
+  onwarn = (_: string) => { }
 } = {}) {
   for (const line of app.lines) {
     line.imageW = 6220.8; // 1920
@@ -1668,17 +1828,17 @@ async function loadLineData({
   for (const data of chartLineDataList) {
     if (selectchart.value === data.chart) {
       if (data.lineId == null) {
-        onwarn('未指定判定线id');
+        onwarn('Judge line id not specified');
         continue;
       }
       const line = app.lines[Number(data.lineId)] as Renderer.JudgeLine | null;
       if (line == null) {
-        onwarn(`指定id的判定线不存在：${data.lineId}`);
+        onwarn(`Judge line with specified id does not exist: ${data.lineId}`);
         continue;
       }
       let image = data.image == null ? null : bgs.get(data.image)?.base;
       if (!image) {
-        if (data.image != null) onwarn(`图片不存在：${data.image}`);
+        if (data.image != null) onwarn(`Image does not exist: ${data.image}`);
         image = res.NoImageBlack;
       }
       line.imageW = image.width;
@@ -1705,7 +1865,7 @@ async function mainPause() {
     if (showTransition.checked && isOutStart) timeOut.pause();
     curTime = timeBgm;
     audio.stop();
-    audio.play(res.mute, { loop: true }); // TODO: 重构
+    audio.play(res.mute, { loop: true }); //   TODO: 重构
     emitter.emit('pause');
   } else {
     if (app.bgVideo != null) await playVideo(app.bgVideo, timeBgm * app.speed);
@@ -1734,7 +1894,7 @@ const loadPlugin = (searchValue: string, callback: () => void) => {
   }, 1e3));
 };
 const appendCfg = (name: string, callback: () => void) => new Checkbox(name).appendBefore(resetCfg.container).hook(callback);
-main.fireModal = function(navHTML = '', contentHTML = '') {
+main.fireModal = function (navHTML = '', contentHTML = '') {
   const cover = document.createElement('div');
   cover.classList.add('cover-dark', 'fade');
   const container = document.createElement('div');
@@ -1768,8 +1928,8 @@ main.fireModal = function(navHTML = '', contentHTML = '') {
   });
   return content;
 };
-main.toast = (msg = '') => main.fireModal('<p>提示</p>', `<p style="white-space:pre;text-align:left;display:inline-block;">${msg}</p>`);
-main.error = (msg = '') => main.fireModal('<p>错误</p>', `<p style="white-space:pre;text-align:left;display:inline-block;">${msg}</p>`);
+main.toast = (msg = '') => main.fireModal('<p>Hint</p>', `<p style="white-space:pre;text-align:left;display:inline-block;">${msg}</p>`);
+main.error = (msg = '') => main.fireModal('<p>Error</p>', `<p style="white-space:pre;text-align:left;display:inline-block;">${msg}</p>`);
 main.define = a => a;
 main.use = async m => {
   const module = await m.then(n => n.default);
@@ -1822,7 +1982,7 @@ interface MainOptions {
   playing: boolean;
   time: number;
 }
-const pause = async() => emitter.eq('play') && mainPause();
+const pause = async () => emitter.eq('play') && mainPause();
 main.pause = pause;
 Object.defineProperty(main, 'playing', {
   get: () => emitter.eq('play')
@@ -1831,7 +1991,7 @@ Object.defineProperty(main, 'playing', {
 Object.defineProperty(main, 'time', {
   get: () => timeBgm,
   set(v: number) {
-    const handler = async() => {
+    const handler = async () => {
       if (emitter.eq('stop') || isOutOver) return;
       const isPlaying = emitter.eq('play');
       if (isPlaying) await mainPause();
@@ -1842,7 +2002,7 @@ Object.defineProperty(main, 'time', {
       //   a.scored = 0;
       //   a.holdStatus = 1; });
       // stat.reset();
-      if (isPlaying) await mainPause().catch((e: unknown) => console.error(e)); // FIXME: video+gauge结算时会报错
+      if (isPlaying) await mainPause().catch((e: unknown) => console.error(e)); //   FIXME: video+gauge结算时会报错
     };
     handler();
   }
@@ -1861,7 +2021,7 @@ const cover = {
     requestAnimationFrame(function callback(t) {
       const id = requestAnimationFrame(callback);
       let time = (t - lastTime) * 1e-3;
-      if (time < 0) time = 0; // 实测有时会出现负数，可能计算出NaN导致闪屏
+      if (time < 0) time = 0; //   实测有时会出现负数，可能计算出NaN导致闪屏
       for (let i = 0; i < values.length; i += 2) {
         if (time < values[i]) {
           const start = i === 0 ? lastValue : values[i - 1];
@@ -1890,7 +2050,7 @@ if (new URLSearchParams(location.search).has('iframe')) {
   document.body.classList.add('iframe');
   stage.setFull(true);
   stage.resize();
-  specialClick.func[3] = async() => Promise.resolve(window.parent.postMessage('full', '*'));
+  specialClick.func[3] = async () => Promise.resolve(window.parent.postMessage('full', '*'));
 }
 self.onmessage = evt => {
   console.log('onmessage', evt);

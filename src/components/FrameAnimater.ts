@@ -29,7 +29,7 @@ export class FrameAnimater {
     if (!isFinite(this.interval)) this.interval = Number.EPSILON;
   }
   private _animate() {
-    this.id = requestAnimationFrame(this._animate.bind(this)); // 回调更新动画
+    this.id = requestAnimationFrame(this._animate.bind(this)); //   回调更新动画
     const nowTime = performance.now();
     const elapsed = nowTime - this.lastTime;
     if (elapsed > this.interval) {

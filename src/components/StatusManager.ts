@@ -1,4 +1,4 @@
-// Html交互(WIP)
+//   Html交互(WIP)
 export class StatusManager {
   private readonly key: string;
   private data: Record<string, string>;

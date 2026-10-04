@@ -19,10 +19,10 @@ function callback() {
   a.download = `chart_${Date.now()}.json`;
   a.click();
 }
-/**
+/*  *
  * 导出json
  * @param {ChartPGS} json
- */
+   */
 function chartify(json) {
   const newChart = {
     formatVersion: 3,

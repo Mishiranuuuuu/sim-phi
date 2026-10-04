@@ -1,4 +1,8 @@
-import { PEC } from '@sim-phi/extends';
+const PEC = {
+  parseRPE: (text: string, path: string, name: string) => ({ data: JSON.parse(text), messages: [], info: {}, line: [], format: 'RPE' }),
+  parse: (text: string, path: string) => ({ data: JSON.parse(text), messages: [], format: 'PEC' }),
+  readInfo: (text: string) => ({})
+};
 import { reader, splitPath } from './reader';
 import { structChart } from './Chart';
 import { structInfoData, structLineData } from './structInfo';

@@ -61,7 +61,7 @@ function loadModYukiOri() {
   analyser.fftSize = 4096;
   // analyser.minDecibels = -180;
   const getFreq = () => {
-    // progress变为频谱图
+    //   progress变为频谱图
     const bufferLength = analyser.frequencyBinCount;
     const freq = new Uint8Array(bufferLength);
     analyser.getByteFrequencyData(freq);
@@ -99,7 +99,7 @@ function loadModYukiOri() {
       hook.tmps.progress = getFreq();
     }
     if (time1 > 325 && time1 < 358) {
-      // 监听判定变化
+      //   监听判定变化
       const statusP = hook.stat.perfect;
       const statusG = hook.stat.good;
       const statusB = hook.stat.bad;
@@ -109,7 +109,7 @@ function loadModYukiOri() {
       if (statusP !== flagPerfect) flagPerfect = setFlag(statusP, '\uff2f(\u2267\u25bd\u2266)\uff2f', true);
       else if (statusG !== flagGood) flagGood = setFlag(statusG, '(\uff3e\u03c9\uff3e)', true);
       else if (statusB !== flagBad) flagBad = setFlag(statusB, '(\u2299\ufe4f\u2299;)', true);
-      // 监听时间变化
+      //   监听时间变化
       if (time1 < 327) setFlag(null, '(\u2299o\u2299)', false);
       else if (time1 > 334 && time1 < 335) setFlag(null, '(\u2299o\u2299)', false);
       else if (time1 > 342 && time1 < 343) setFlag(null, '(\u2299o\u2299)', false);

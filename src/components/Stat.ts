@@ -140,12 +140,12 @@ export class Stat {
     this.combo = 0;
     this.maxcombo = 0;
     this.noteRank = [0, 0, 0, 0, 0, 0, 0, 0]; // 4:PM,5:PE,1:PL,7:GE,3:GL,6:BE,2:BL
-    this.combos = [0, 0, 0, 0, 0]; // 不同种类note实时连击次数
+    this.combos = [0, 0, 0, 0, 0]; //   不同种类note实时连击次数
     this.cumDisp = 0;
     this.curDisp = 0;
     this.numDisp = 0;
     if (speed === '') Stat.removeLegacy(key);
-    const str = localStorage.getItem(key) ?? (localStorage.setItem(key, ''), ''); // 初始化存储
+    const str = localStorage.getItem(key) ?? (localStorage.setItem(key, ''), ''); //   初始化存储
     for (let i = 0; i < Math.floor(str.length / 40); i++) {
       const data = str.slice(i * 40, i * 40 + 40);
       this.data[data.slice(0, 32)] = data.slice(-8);

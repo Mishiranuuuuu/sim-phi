@@ -13,7 +13,7 @@ export class Stage {
     const devicePixelRatio = self.devicePixelRatio || 1;
     const rawWidth = Math.min(854, document.body.getBoundingClientRect().width * 0.8);
     const width = Math.round(rawWidth * devicePixelRatio);
-    const height = Math.ceil(width / this.aspectRatio); // 保证实际宽高比不大于理论值，防止出现黑边
+    const height = Math.ceil(width / this.aspectRatio); //   保证实际宽高比不大于理论值，防止出现黑边
     const stageWidth = width / devicePixelRatio;
     const stageHeight = height / devicePixelRatio;
     if (this.isFull) this.stage.style.cssText = ';position:fixed;top:0;left:0;bottom:0;right:0';

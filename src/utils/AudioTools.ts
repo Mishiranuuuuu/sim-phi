@@ -34,7 +34,7 @@ class IntervalBufferSource {
     return this._bfs || _actx.createBufferSource();
   }
   public start() {
-    this.startTime = performance.now() / 1000; // 使用actx.currentTime会有迷之延迟
+    this.startTime = performance.now() / 1000; //   使用actx.currentTime会有迷之延迟
     this._loop();
   }
   public stop() {
@@ -46,7 +46,7 @@ class IntervalBufferSource {
     this._bfs = _actx.createBufferSource();
     const bfs = this._bfs;
     bfs.buffer = this.res;
-    bfs.loop = this.loop; // 循环播放
+    bfs.loop = this.loop; //   循环播放
     bfs.connect(this.dest);
     bfs.playbackRate.value = this.playbackrate;
     const currentOffset = (this.offset + (performance.now() / 1000 - this.startTime) * this.playbackrate) % this.res.duration;
@@ -68,7 +68,7 @@ function play(res: AudioBuffer, dest: AudioNode, options: AudioParamOptions): ()
   }
   const bufferSource = _actx.createBufferSource();
   bufferSource.buffer = res;
-  bufferSource.loop = loop; // 循环播放
+  bufferSource.loop = loop; //   循环播放
   bufferSource.connect(dest);
   bufferSource.playbackRate.value = playbackrate;
   bufferSource.start(0, offset);

@@ -1,9 +1,9 @@
-// 规范判定线事件
+//   规范判定线事件
 function arrangeLineEvent(events) {
-  const oldEvents = JSON.parse(JSON.stringify(events)); // 深拷贝
+  const oldEvents = JSON.parse(JSON.stringify(events)); //   深拷贝
   const newEvents = [
     {
-      // 以1-1e6开头
+      //   以1-1e6开头
       startTime: 1 - 1e6,
       endTime: 0,
       start: oldEvents[0] ? oldEvents[0].start : 0,
@@ -13,7 +13,7 @@ function arrangeLineEvent(events) {
     }
   ];
   oldEvents.push({
-    // 以1e9结尾
+    //   以1e9结尾
     startTime: 0,
     endTime: 1e9,
     start: oldEvents[oldEvents.length - 1] ? oldEvents[oldEvents.length - 1].end : 0,
@@ -22,11 +22,11 @@ function arrangeLineEvent(events) {
     end2: oldEvents[oldEvents.length - 1] ? oldEvents[oldEvents.length - 1].end2 : 0
   });
   for (const i2 of oldEvents) {
-    // 保证时间连续性
+    //   保证时间连续性
     const i1 = newEvents[newEvents.length - 1];
     if (i2.startTime > i2.endTime) continue;
     if (i1.endTime > i2.endTime) {
-      // i1吃掉i2
+      //   i1吃掉i2
     } else if (i1.endTime === i2.startTime) newEvents.push(i2);
     else if (i1.endTime < i2.startTime) {
       newEvents.push({
@@ -48,14 +48,14 @@ function arrangeLineEvent(events) {
       });
     }
   }
-  // 合并相同变化率事件
+  //   合并相同变化率事件
   const newEvents2 = [newEvents.shift()];
   for (const i2 of newEvents) {
     const i1 = newEvents2[newEvents2.length - 1];
     const d1 = i1.endTime - i1.startTime;
     const d2 = i2.endTime - i2.startTime;
     if (i2.startTime === i2.endTime) {
-      // 忽略0长度事件
+      //   忽略0长度事件
     } else if (i1.end === i2.start && i1.end2 === i2.start2 && (i1.end - i1.start) * d2 === (i2.end - i2.start) * d1 && (i1.end2 - i1.start2) * d2 === (i2.end2 - i2.start2) * d1) {
       i1.endTime = i2.endTime;
       i1.end = i2.end;
@@ -163,7 +163,7 @@ export function reverse(chart, duration) {
     for (const evt of line.judgeLineRotateEvents) reverseLineEvent(evt, tb);
     updateDe(line);
   }
-  return chartNew.duplicate(); // 规范判定线事件
+  return chartNew.duplicate(); //   规范判定线事件
 }
 /**
  * @param {HTMLElement} elem

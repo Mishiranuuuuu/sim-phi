@@ -84,7 +84,7 @@ body {
   border: 1px solid #93cb96;
   box-shadow: 0 0 8px 0 #7dc581;
   border-radius: 3px;
-  background: #fff;
+  background: var(--panel-bg);
 }
 
 #uploader:hover #uploader-select {
@@ -99,7 +99,7 @@ body {
 }
 
 #uploader-select > label:hover {
-  background-color: #c9e5ca;
+  background-color: var(--hover-bg);
 }
 
 .cover-dark {
@@ -168,7 +168,7 @@ body {
 
 .view-nav a,
 .view-nav p {
-  background-color: #89a7f3;
+  background-color: var(--button-bg);
   color: #f0f1fe;
   flex-grow: 1;
   text-align: center;
@@ -182,13 +182,13 @@ body {
 
 .view-nav a:hover,
 .view-nav a.active {
-  background-color: #f0f1fe;
-  color: #89a7f3;
+  background-color: var(--panel-bg);
+  color: var(--text-color);
 }
 
 .view-content {
   max-height: 80vh;
-  background-color: #f0f1fe;
+  background-color: var(--panel-bg);
   border: 1px solid gray;
   border-radius: 0 0 1em 1em;
   overflow: scroll;
@@ -206,7 +206,7 @@ body {
 }
 
 .view-content > :empty:after {
-  content: '此功能正在建设中...';
+  content: 'This feature is under construction...';
   display: flow-root;
   text-align: center;
   padding: 0.9em;
@@ -238,18 +238,18 @@ body {
 }
 
 .msgbox[type='notice'] {
-  background-color: #ecf4ff;
-  color: #003681;
+  background-color: var(--msg-notice-bg, #ecf4ff);
+  color: var(--msg-notice-color, #003681);
 }
 
 .msgbox[type='warn'] {
-  background-color: #fffbe5;
-  color: #5c3c00;
+  background-color: var(--msg-warn-bg, #fffbe5);
+  color: var(--msg-warn-color, #5c3c00);
 }
 
 .msgbox[type='error'] {
-  background-color: #fee;
-  color: #e10000;
+  background-color: var(--msg-error-bg, #fee);
+  color: var(--msg-error-color, #e10000);
 }
 
 .bm-item {

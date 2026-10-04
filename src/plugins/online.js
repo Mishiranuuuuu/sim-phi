@@ -63,7 +63,7 @@ async function query(path = '') {
   const dstr = str => decodeURIComponent(str.match(/[^/]+$/)[0]);
   for (const res of resList) {
     const data1 = await downloader.getData(res) || new ArrayBuffer(0);
-    uploader.fireLoad({ name: dstr(res.toString()) }, data1); // 以后添加catch
+    uploader.fireLoad({ name: dstr(res.toString()) }, data1); //   以后添加catch
   }
 }
 /**
@@ -87,7 +87,7 @@ async function getContentLength(url) {
     const res = await fetch(url, { method: 'HEAD' }).catch(() => {
       throw Object.assign(new Error(), { url, status: 0, statusText: 'Network Error' });
     });
-    const length = res.headers.get('content-length'); // 踩坑：这里的length是字符串
+    const length = res.headers.get('content-length'); //   踩坑：这里的length是字符串
     if (length == null) throw new Error('No Content-Length Header');
     if (res.ok) return Number(length);
   } catch (ignoreErr) {

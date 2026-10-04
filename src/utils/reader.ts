@@ -16,7 +16,7 @@ export class FileEmitter extends EventTarget {
       onchange: () => {
         this.fireChange(this.input.files);
         for (const file of this.input.files || []) {
-          // 加载文件
+          //   加载文件
           const reader = new FileReader();
           reader.readAsArrayBuffer(file);
           reader.onprogress = evt => this.fireProgress(evt.loaded, evt.total);
@@ -58,7 +58,7 @@ export class ZipReader extends EventTarget {
     if (!this.worker) {
       this.dispatchEvent(new CustomEvent('loadstart'));
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-      const worker = new Zip() as Worker; // 以后考虑indexedDB存储url
+      const worker = new Zip() as Worker; //   以后考虑indexedDB存储url
       worker.addEventListener('message', msg => {
         const handler = async() => {
           const { data } = msg as { data: { data: ByteData; total: number } };
@@ -212,7 +212,7 @@ function createReader(define: ((readerInit: ReaderInit) => ByteReader)) {
           errorHandler(reader, err as Error);
         }
       }
-      return { pathname: i.pathname, type: 'unknown', data: errors.join('\n') }; // TODO: 完善错误信息
+      return { pathname: i.pathname, type: 'unknown', data: errors.join('\n') }; //   TODO: 完善错误信息
     },
     use(readerInit: ReaderInit | ReaderInit[]) {
       if (Array.isArray(readerInit)) {

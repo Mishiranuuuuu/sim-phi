@@ -138,7 +138,7 @@ async function readData(data) {
   await downloader.start(uploader.fireProgress.bind(uploader));
   const xhr4 = async(url, name) => {
     const data1 = await downloader.getData(url) || new ArrayBuffer(0);
-    uploader.fireLoad({ name }, data1); // 以后添加catch
+    uploader.fireLoad({ name }, data1); //   以后添加catch
   };
   await xhr4(data.song, dstr(data.song));
   await xhr4(data.illustration, dstr(data.illustration));
@@ -201,7 +201,7 @@ async function getContentLength(url) {
     const res = await fetch(url, { method: 'HEAD' }).catch(() => {
       throw Object.assign(new Error(), { url, status: 0, statusText: 'Network Error' });
     });
-    const length = res.headers.get('content-length'); // 踩坑：这里的length是字符串
+    const length = res.headers.get('content-length'); //   踩坑：这里的length是字符串
     if (length == null) throw new Error('No Content-Length Header');
     if (res.ok) return Number(length);
   } catch (ignoreErr) {

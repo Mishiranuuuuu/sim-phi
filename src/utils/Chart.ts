@@ -1,4 +1,78 @@
 import Type from './Type';
+export class Vec2 {
+  public x: number;
+  public y: number;
+  public constructor(v: Record<string, unknown>) {
+    this.x = Type.float(v.x);
+    this.y = Type.float(v.y);
+  }
+}
+export class BlockAreaRotateEvent {
+  public anchor: Vec2;
+  public time: number;
+  public easeType: number;
+  public rotation: number;
+  public constructor(event: Record<string, unknown>) {
+    this.anchor = Type.obj(event.anchor, Vec2);
+    this.time = Type.float(event.time);
+    this.easeType = Type.int(event.easeType);
+    this.rotation = Type.float(event.rotation);
+  }
+}
+export class BlockAreaMoveEvent {
+  public endPosition: Vec2;
+  public time: number;
+  public easeTypeX: number;
+  public easeTypeY: number;
+  public rawKeys: string;
+  public constructor(event: Record<string, unknown>) {
+    this.rawKeys = Object.keys(event).join(',');
+    this.endPosition = Type.obj(event.endPosition, Vec2);
+    this.time = Type.float(event.time);
+    this.easeTypeX = Type.int(event.easeTypeX);
+    this.easeTypeY = Type.int(event.easeTypeY);
+  }
+}
+export class BlockAreaScaleEvent {
+  public anchor: Vec2;
+  public time: number;
+  public easeTypeX: number;
+  public easeTypeY: number;
+  public scale: Vec2;
+  public constructor(event: Record<string, unknown>) {
+    this.anchor = Type.obj(event.anchor, Vec2);
+    this.time = Type.float(event.time);
+    this.easeTypeX = Type.int(event.easeTypeX);
+    this.easeTypeY = Type.int(event.easeTypeY);
+    this.scale = Type.obj(event.scale, Vec2);
+  }
+}
+export class BlockArea {
+  public topRightPercentage: Vec2;
+  public bottomLeftPercentage: Vec2;
+  public appearTime: number;
+  public enableTime: number;
+  public disableTime: number;
+  public disappearTime: number;
+  public isSubtract: boolean;
+  public rotateEvents: BlockAreaRotateEvent[];
+  public moveEvents: BlockAreaMoveEvent[];
+  public scaleEvents: BlockAreaScaleEvent[];
+  public rawKeys: string;
+  public constructor(area: Record<string, unknown>) {
+    this.rawKeys = Object.keys(area).join(', ');
+    this.topRightPercentage = Type.obj(area.topRightPercentage, Vec2);
+    this.bottomLeftPercentage = Type.obj(area.bottomLeftPercentage, Vec2);
+    this.appearTime = Type.float(area.appearTime);
+    this.enableTime = Type.float(area.enableTime);
+    this.disableTime = Type.float(area.disableTime);
+    this.disappearTime = Type.float(area.disappearTime);
+    this.isSubtract = Type.bool(area.isSubtract);
+    this.rotateEvents = Type.arr(area.rotateEvents, BlockAreaRotateEvent);
+    this.moveEvents = Type.arr(area.moveEvents, BlockAreaMoveEvent);
+    this.scaleEvents = Type.arr(area.scaleEvents, BlockAreaScaleEvent);
+  }
+}
 export class SpeedEvent {
   public startTime: number;
   public endTime: number;
@@ -73,12 +147,14 @@ export class Chart {
   public offset: number;
   public numOfNotes: number;
   public judgeLineList: JudgeLine[];
+  public blockAreaList: BlockArea[];
   public constructor(input?: Record<string, unknown>) {
     const chart = input || {};
     this.formatVersion = Type.int(chart.formatVersion);
     this.offset = Type.float(chart.offset);
     this.numOfNotes = Type.int(chart.numOfNotes);
     this.judgeLineList = Type.arr(chart.judgeLineList, JudgeLine);
+    this.blockAreaList = Type.arr(chart.blockAreaList, BlockArea);
     if (chart.numOfNotes == null) this.numOfNotes = this.judgeLineList.reduce((a, b) => a + b.numOfNotes, 0);
   }
   public duplicate(): Chart {

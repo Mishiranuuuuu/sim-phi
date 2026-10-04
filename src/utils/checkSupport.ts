@@ -42,7 +42,7 @@ export async function checkSupport({
     return false;
   };
   await Utils.addFont('Titillium Web', { alt: 'Custom' });
-  // 兼容性检测
+  //   兼容性检测
   messageCallback('检查浏览器兼容性...');
   // eslint-disable-next-line @typescript-eslint/no-deprecated
   const isMobile = navigator.standalone !== undefined || navigator.platform.includes('Linux') && navigator.maxTouchPoints === 5;
@@ -52,7 +52,7 @@ export async function checkSupport({
   messageCallback('加载音频组件...');
   const oggCompatible = new Audio().canPlayType('audio/ogg') !== '';
   if (!await loadLib('ogg格式兼容', '/lib/oggmented-bundle.js', () => !oggCompatible && isUndefined('oggmented'))) return -4;
-  audio.init(oggCompatible ? self.AudioContext : self.oggmented.OggmentedAudioContext); // 兼容Safari
+  audio.init(oggCompatible ? self.AudioContext : self.oggmented.OggmentedAudioContext); //   兼容Safari
   const webpCompatible = document.createElement('canvas').toDataURL('image/webp').includes('data:image/webp');
   if (!await loadLib('webp格式兼容', '/lib/webp-bundle.js', () => !webpCompatible && isUndefined('webp'))) return -5;
   await checkOrient(orientNotSupportCallback);
@@ -60,7 +60,7 @@ export async function checkSupport({
 }
 function checkMiuiVersion(warnCallback: (_msg: string) => void) {
   if (navigator.userAgent.includes('MiuiBrowser')) {
-    // 实测 v17.1.8 问题仍然存在，v17.4.80113 问题已修复
+    //   实测 v17.1.8 问题仍然存在，v17.4.80113 问题已修复
     const miuiVersion = /MiuiBrowser\/(\d+\.\d+)/.exec(navigator.userAgent);
     const text = '检测到小米浏览器且版本低于17.4，可能存在切后台声音消失的问题';
     if (miuiVersion == null || parseFloat(miuiVersion[1]) < 17.4) warnCallback(text);

@@ -88,7 +88,7 @@ interface BetterMessage {
   target: string;
 }
 interface ReaderData2 {
-  /** 包含相对路径和文件名 */
+  /*  * 包含相对路径和文件名   */
   pathname: string;
   type: string;
 }
@@ -123,7 +123,7 @@ interface UnknownReaderData extends ReaderData2 {
 }
 type ReaderData = ChartInfoReaderData | ChartLineReaderData | ChartReaderData | ImageReaderData | MediaReaderData | UnknownReaderData;
 interface ByteData {
-  /** 包含相对路径和文件名 */
+  /*  * 包含相对路径和文件名   */
   pathname: string;
   buffer: ArrayBuffer;
   text?: string;
@@ -207,7 +207,7 @@ interface FontOptions {
   alt: string;
 }
 type ModuleContent = CommandModuleContent | ConfigModuleContent | ScriptModuleContent | UnknownModuleContent;
-// 只有CommonJS才认全局import
+//   只有CommonJS才认全局import
 declare const JSZip: typeof import('jszip');
 declare let hook: typeof import('./index').hook;
 declare const Utils: {
