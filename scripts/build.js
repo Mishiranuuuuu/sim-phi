@@ -6,11 +6,13 @@ const dir = fileURLToPath(new URL('.', import.meta.url));
 const { version: currentVersion } = pkg;
 console.log(`Current version: ${currentVersion}`);
 const targetPath = resolve(resolve(dir, '..'), 'dist', 'index.html');
-const target = readFileSync(targetPath, 'utf-8');
-const targetNew = target.replaceAll('$VERSION$', currentVersion);
-writeFileSync(targetPath, targetNew, 'utf-8');
-if (target === targetNew) {
-  console.log('Nothing changed.');
-} else {
-  console.log('Updated successfully.');
-}
+let target = readFileSync(targetPath, 'utf-8');
+target = target.replaceAll('$VERSION$', currentVersion);
+target = target.replaceAll('href="/utils/style.css"', 'href="./utils/style.css"');
+target = target.replaceAll('href="/src/style.css"', 'href="./style.css"');
+target = target.replaceAll('src="/utils/main.js"', 'src="./utils/main.js"');
+target = target.replaceAll('src="/src/index.ts"', `src="./script-${currentVersion}.js"`);
+target = target.replaceAll('href="/service-worker.js"', 'href="./service-worker.js"');
+target = target.replaceAll('href="/412.html"', 'href="./412.html"');
+writeFileSync(targetPath, target, 'utf-8');
+console.log('Updated successfully.');
