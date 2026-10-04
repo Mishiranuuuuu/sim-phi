@@ -1087,7 +1087,10 @@ function mainLoop() {
   ctx.fillStyle = '#fff';
   ctx.globalAlpha = 0.8;
   ctx.textAlign = 'right';
-  ctx.fillText(`Phi\x67ros Simulator v${meta[1].join('.')} - Code by lchz\x683\x3473\nModed by WakaranaiDesu`, (canvas.width + canvasfg.width) / 2 - lineScale * 0.1, canvas.height - lineScale * 0.1);
+  const textX = (canvas.width + canvasfg.width) / 2 - lineScale * 0.1;
+  const textY = canvas.height - lineScale * 0.1;
+  ctx.fillText(`Phi\x67ros Simulator v${meta[1].join('.')} - Code by lchz\x683\x3473`, textX, textY - lineScale * 0.5);
+  ctx.fillText(`Modded by WakaranaiDesu`, textX, textY);
   ctx.globalCompositeOperation = 'source-over';
 }
 function loopNoCanvas() {
