@@ -633,7 +633,7 @@ export class Renderer {
         const dt = activeRotEvt.endSeconds === activeRotEvt.startSeconds ? 1 : Math.max(0, Math.min(1, (time - activeRotEvt.startSeconds) / (activeRotEvt.endSeconds - activeRotEvt.startSeconds)));
         const ease = tweenEases[activeRotEvt.easeType] || tweenEases[0];
         blockArea.rotation = this.matR(startRot + (activeRotEvt.rotation - startRot) * ease(dt));
-        
+
         const startAnchorX = i > 0 ? prevEvt.anchor.x : activeRotEvt.anchor.x;
         const startAnchorY = i > 0 ? prevEvt.anchor.y : activeRotEvt.anchor.y;
         const centerX = (blockArea.bottomLeftPercentage.x + blockArea.topRightPercentage.x) / 2;
