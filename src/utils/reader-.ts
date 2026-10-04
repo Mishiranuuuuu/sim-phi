@@ -1,7 +1,7 @@
 const PEC = {
-  parseRPE: (text: string, path: string, name: string) => ({ data: JSON.parse(text), messages: [], info: {}, line: [], format: 'RPE' }),
-  parse: (text: string, path: string) => ({ data: JSON.parse(text), messages: [], format: 'PEC' }),
-  readInfo: (text: string) => ({})
+  parseRPE: (text: string, _path: string, _name: string) => ({ data: JSON.parse(text), messages: [], info: {}, line: [], format: 'RPE' }),
+  parse: (text: string, _path: string) => ({ data: JSON.parse(text), messages: [], format: 'PEC' }),
+  readInfo: (_text: string) => ([] as Record<string, string | null>[])
 };
 import { reader, splitPath } from './reader';
 import { structChart } from './Chart';

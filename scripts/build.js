@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
-import pkg from '../package.json' assert { type: 'json' };
+import pkg from '../package.json' with { type: 'json' };
 const dir = fileURLToPath(new URL('.', import.meta.url));
 const { version: currentVersion } = pkg;
 console.log(`Current version: ${currentVersion}`);
