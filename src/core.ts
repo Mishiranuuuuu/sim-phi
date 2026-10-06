@@ -638,8 +638,8 @@ export class Renderer {
         const startAnchorY = i > 0 ? prevEvt.anchor.y : activeRotEvt.anchor.y;
         const centerX = (blockArea.bottomLeftPercentage.x + blockArea.topRightPercentage.x) / 2;
         const centerY = (blockArea.bottomLeftPercentage.y + blockArea.topRightPercentage.y) / 2;
-        const anchorX = startAnchorX + (activeRotEvt.anchor.x - startAnchorX) * ease(dt);
-        const anchorY = startAnchorY + (activeRotEvt.anchor.y - startAnchorY) * ease(dt);
+        const anchorX = startAnchorX;
+        const anchorY = startAnchorY;
         blockArea.rotateAnchorX = this.matX(anchorX) - this.matX(centerX);
         blockArea.rotateAnchorY = this.matY(anchorY) - this.matY(centerY);
 
@@ -672,8 +672,8 @@ export class Renderer {
         const startAnchorY = i > 0 ? prevEvt.anchor.y : activeScaleEvt.anchor.y;
         const centerX = (blockArea.bottomLeftPercentage.x + blockArea.topRightPercentage.x) / 2;
         const centerY = (blockArea.bottomLeftPercentage.y + blockArea.topRightPercentage.y) / 2;
-        const anchorX = startAnchorX + (activeScaleEvt.anchor.x - startAnchorX) * easeX(dt);
-        const anchorY = startAnchorY + (activeScaleEvt.anchor.y - startAnchorY) * easeY(dt);
+        const anchorX = startAnchorX;
+        const anchorY = startAnchorY;
         blockArea.scaleAnchorX = this.matX(anchorX) - this.matX(centerX);
         blockArea.scaleAnchorY = this.matY(anchorY) - this.matY(centerY);
       }

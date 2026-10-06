@@ -15,7 +15,7 @@ export class BlockAreaRotateEvent {
   public constructor(event: Record<string, unknown>) {
     this.anchor = Type.obj(event.anchor, Vec2);
     this.time = Type.float(event.time);
-    this.easeType = Type.int(event.easeType);
+    this.easeType = Math.max(0, Math.min(14, Type.int(event.easeType)));
     this.rotation = Type.float(event.rotation);
   }
 }
@@ -29,8 +29,8 @@ export class BlockAreaMoveEvent {
     this.rawKeys = Object.keys(event).join(',');
     this.endPosition = Type.obj(event.endPosition, Vec2);
     this.time = Type.float(event.time);
-    this.easeTypeX = Type.int(event.easeTypeX);
-    this.easeTypeY = Type.int(event.easeTypeY);
+    this.easeTypeX = Math.max(0, Math.min(14, Type.int(event.easeTypeX)));
+    this.easeTypeY = Math.max(0, Math.min(14, Type.int(event.easeTypeY)));
   }
 }
 export class BlockAreaScaleEvent {
@@ -42,8 +42,8 @@ export class BlockAreaScaleEvent {
   public constructor(event: Record<string, unknown>) {
     this.anchor = Type.obj(event.anchor, Vec2);
     this.time = Type.float(event.time);
-    this.easeTypeX = Type.int(event.easeTypeX);
-    this.easeTypeY = Type.int(event.easeTypeY);
+    this.easeTypeX = Math.max(0, Math.min(14, Type.int(event.easeTypeX)));
+    this.easeTypeY = Math.max(0, Math.min(14, Type.int(event.easeTypeY)));
     this.scale = Type.obj(event.scale, Vec2);
   }
 }
@@ -64,13 +64,13 @@ export class BlockArea {
     this.topRightPercentage = Type.obj(area.topRightPercentage, Vec2);
     this.bottomLeftPercentage = Type.obj(area.bottomLeftPercentage, Vec2);
     this.appearTime = Type.float(area.appearTime);
-    this.enableTime = Type.float(area.enableTime);
-    this.disableTime = Type.float(area.disableTime);
-    this.disappearTime = Type.float(area.disappearTime);
+    this.enableTime = Math.max(Type.float(area.enableTime), this.appearTime);
+    this.disableTime = Math.max(Type.float(area.disableTime), this.enableTime);
+    this.disappearTime = Math.max(Type.float(area.disappearTime), this.disableTime);
     this.isSubtract = Type.bool(area.isSubtract);
-    this.rotateEvents = Type.arr(area.rotateEvents, BlockAreaRotateEvent);
-    this.moveEvents = Type.arr(area.moveEvents, BlockAreaMoveEvent);
-    this.scaleEvents = Type.arr(area.scaleEvents, BlockAreaScaleEvent);
+    this.rotateEvents = Type.arr(area.rotateEvents, BlockAreaRotateEvent).sort((a, b) => a.time - b.time);
+    this.moveEvents = Type.arr(area.moveEvents, BlockAreaMoveEvent).sort((a, b) => a.time - b.time);
+    this.scaleEvents = Type.arr(area.scaleEvents, BlockAreaScaleEvent).sort((a, b) => a.time - b.time);
   }
 }
 export class SpeedEvent {
