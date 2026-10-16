@@ -67,33 +67,20 @@ interface JudgeLineExtends extends JudgeLine {
   imageL: [ImageBitmap, ImageBitmap, null, ImageBitmap];
   imageC: boolean;
 }
-interface BlockAreaEventExtends {
-  startSeconds: number;
-  endSeconds: number;
-}
-interface BlockAreaRotateEventExtends extends BlockAreaRotateEvent, BlockAreaEventExtends { }
-interface BlockAreaMoveEventExtends extends BlockAreaMoveEvent, BlockAreaEventExtends { }
-interface BlockAreaScaleEventExtends extends BlockAreaScaleEvent, BlockAreaEventExtends { }
 interface BlockAreaExtends extends BlockArea {
-  offsetX: number;
-  offsetY: number;
+  centerX: number;
+  centerY: number;
+  width: number;
+  height: number;
   scaleX: number;
   scaleY: number;
   rotation: number;
   cosr: number;
   sinr: number;
-  moveEventsIndex: number;
-  rotateEventsIndex: number;
-  scaleEventsIndex: number;
   visible: boolean;
-  // Rotation and scale have independent pivots in the block's local space.
-  rotateAnchorX: number;
-  rotateAnchorY: number;
-  scaleAnchorX: number;
-  scaleAnchorY: number;
-  rotateEvents: BlockAreaRotateEventExtends[];
-  moveEvents: BlockAreaMoveEventExtends[];
-  scaleEvents: BlockAreaScaleEventExtends[];
+  chartCenter: { x: number; y: number };
+  chartSize: { x: number; y: number };
+  chartRotation: number;
 }
 interface ChartExtends extends Chart {
   maxSeconds: number;
@@ -106,6 +93,189 @@ interface EventSeconds {
   startSeconds: number;
   endSeconds: number;
 }
+
+function blockEasing(ease: number, u: number): number {
+  u = Math.max(0, Math.min(1, u));
+  if (ease <= 0) return u;
+  if (ease >= 14) return 1;
+  if (ease === 13) return 0;
+  const power = Math.floor((ease - 1) / 3) + 2;
+  const type = (ease - 1) % 3;
+  if (type === 0) return u ** power;
+  if (type === 1) return 1 - (1 - u) ** power;
+  if (u < 0.5) return (2 ** (power - 1)) * (u ** power);
+  return 1 - ((2 - 2 * u) ** power) / 2;
+}
+
+function lastEventIndex<T extends { time: number }>(events: T[], t: number): number {
+  if (events.length === 0 || t < events[0].time) return -1;
+  let lo = 0;
+  let hi = events.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (events[mid].time <= t) {
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return hi;
+}
+
+function pctToChart(p: { x: number; y: number }, aspect: number): { x: number; y: number } {
+  return {
+    x: 2 * p.x - 1,
+    y: (2 * p.y - 1) / aspect
+  };
+}
+
+function chartToCanvas(p: { x: number; y: number }, aspect: number, W: number, H: number): { x: number; y: number } {
+  return {
+    x: (p.x + 1) * 0.5 * W,
+    y: (1 - p.y * aspect) * 0.5 * H
+  };
+}
+
+function scaleCenter(
+  center: { x: number; y: number },
+  anchor: { x: number; y: number },
+  next: { x: number; y: number },
+  current: { x: number; y: number }
+): { x: number; y: number } {
+  const div = (a: number, b: number) => (Math.abs(b) < 1e-6 ? 1 : a / b);
+  return {
+    x: anchor.x + div(next.x, current.x) * (center.x - anchor.x),
+    y: anchor.y + div(next.y, current.y) * (center.y - anchor.y)
+  };
+}
+
+function rotateCenter(
+  center: { x: number; y: number },
+  anchor: { x: number; y: number },
+  deltaDeg: number
+): { x: number; y: number } {
+  const rad = deltaDeg * Math.PI / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = center.x - anchor.x;
+  const dy = center.y - anchor.y;
+  return {
+    x: anchor.x + cos * dx - sin * dy,
+    y: anchor.y + sin * dx + cos * dy
+  };
+}
+
+function computeBlockAreaTransform(blockArea: BlockAreaExtends, time: number, aspect: number) {
+  const bl = pctToChart(blockArea.bottomLeftPercentage, aspect);
+  const tr = pctToChart(blockArea.topRightPercentage, aspect);
+  const baseSize = { x: tr.x - bl.x, y: tr.y - bl.y };
+  const c = { x: (bl.x + tr.x) * 0.5, y: (bl.y + tr.y) * 0.5 };
+
+  // 1. Scale
+  let scale = { x: 1, y: 1 };
+  const scaleEvents = blockArea.scaleEvents;
+  const scaleIdx = lastEventIndex(scaleEvents, time);
+  if (scaleEvents.length > 0) {
+    if (scaleIdx === -1) {
+      scale = { x: 1, y: 1 };
+    } else if (scaleIdx + 1 >= scaleEvents.length) {
+      scale = { x: scaleEvents[scaleIdx].scale.x, y: scaleEvents[scaleIdx].scale.y };
+    } else {
+      const cur = scaleEvents[scaleIdx];
+      const next = scaleEvents[scaleIdx + 1];
+      const norm = next.time <= cur.time ? 1 : Math.max(0, Math.min(1, (time - cur.time) / (next.time - cur.time)));
+      const px = blockEasing(cur.easeTypeX, norm);
+      const py = blockEasing(cur.easeTypeY, norm);
+      scale = {
+        x: cur.scale.x + px * (next.scale.x - cur.scale.x),
+        y: cur.scale.y + py * (next.scale.y - cur.scale.y)
+      };
+    }
+  }
+
+  // 2. Rotation (counter-clockwise in chart space, degrees)
+  let rotation = 0;
+  const rotateEvents = blockArea.rotateEvents;
+  const rotIdx = lastEventIndex(rotateEvents, time);
+  if (rotateEvents.length > 0) {
+    if (rotIdx === -1) {
+      rotation = 0;
+    } else if (rotIdx + 1 >= rotateEvents.length) {
+      rotation = rotateEvents[rotIdx].rotation;
+    } else {
+      const cur = rotateEvents[rotIdx];
+      const next = rotateEvents[rotIdx + 1];
+      const norm = next.time <= cur.time ? 1 : Math.max(0, Math.min(1, (time - cur.time) / (next.time - cur.time)));
+      const p = blockEasing(cur.easeType, norm);
+      rotation = cur.rotation + p * (next.rotation - cur.rotation);
+    }
+  }
+
+  // 3. Cumulative center from anchor history
+  let center = { x: c.x, y: c.y };
+  if (scaleEvents.length > 0 && scaleIdx !== -1) {
+    for (let k = 0; k < scaleIdx; k++) {
+      const cur = scaleEvents[k];
+      const curAnchor = pctToChart(cur.anchor, aspect);
+      center = scaleCenter(center, curAnchor, scaleEvents[k + 1].scale, cur.scale);
+    }
+    if (scaleIdx + 1 < scaleEvents.length) {
+      const cur = scaleEvents[scaleIdx];
+      const curAnchor = pctToChart(cur.anchor, aspect);
+      center = scaleCenter(center, curAnchor, scale, cur.scale);
+    }
+  }
+
+  if (rotateEvents.length > 0 && rotIdx !== -1) {
+    for (let k = 0; k < rotIdx; k++) {
+      const cur = rotateEvents[k];
+      const curAnchor = pctToChart(cur.anchor, aspect);
+      center = rotateCenter(center, curAnchor, rotateEvents[k + 1].rotation - cur.rotation);
+    }
+    if (rotIdx + 1 < rotateEvents.length) {
+      const cur = rotateEvents[rotIdx];
+      const curAnchor = pctToChart(cur.anchor, aspect);
+      center = rotateCenter(center, curAnchor, rotation - cur.rotation);
+    }
+  }
+
+  // 4. Movement (adds delta from base center c)
+  const moveEvents = blockArea.moveEvents;
+  if (moveEvents.length > 0) {
+    const moveIdx = lastEventIndex(moveEvents, time);
+    if (moveIdx !== -1) {
+      let moveTarget: { x: number; y: number };
+      if (moveIdx + 1 >= moveEvents.length) {
+        moveTarget = pctToChart(moveEvents[moveIdx].endPosition, aspect);
+      } else {
+        const cur = moveEvents[moveIdx];
+        const next = moveEvents[moveIdx + 1];
+        const norm = next.time <= cur.time ? 1 : Math.max(0, Math.min(1, (time - cur.time) / (next.time - cur.time)));
+        const px = blockEasing(cur.easeTypeX, norm);
+        const py = blockEasing(cur.easeTypeY, norm);
+        moveTarget = pctToChart({
+          x: cur.endPosition.x + px * (next.endPosition.x - cur.endPosition.x),
+          y: cur.endPosition.y + py * (next.endPosition.y - cur.endPosition.y)
+        }, aspect);
+      }
+      center.x += moveTarget.x - c.x;
+      center.y += moveTarget.y - c.y;
+    }
+  }
+
+  const size = {
+    x: Math.abs(baseSize.x * scale.x),
+    y: Math.abs(baseSize.y * scale.y)
+  };
+
+  return {
+    center,
+    size,
+    rotation,
+    scale
+  };
+}
+
 export class Renderer {
   //   容器和画布上下文
   public stage: HTMLDivElement;
@@ -391,37 +561,20 @@ export class Renderer {
     }
     //   处理BlockArea
     for (const blockArea of chartNew.blockAreaList) {
-      // BlockArea times are already in seconds
-      blockArea.appearTime *= 1;
-      blockArea.enableTime *= 1;
-      blockArea.disableTime *= 1;
-      blockArea.disappearTime *= 1;
-      blockArea.moveEventsIndex = 0;
-      blockArea.rotateEventsIndex = 0;
-      blockArea.scaleEventsIndex = 0;
-      blockArea.offsetX = 0;
-      blockArea.offsetY = 0;
+      blockArea.centerX = 0;
+      blockArea.centerY = 0;
+      blockArea.width = 0;
+      blockArea.height = 0;
       blockArea.scaleX = 1;
       blockArea.scaleY = 1;
       blockArea.rotation = 0;
       blockArea.cosr = 1;
       blockArea.sinr = 0;
       blockArea.visible = false;
-      blockArea.rotateAnchorX = 0;
-      blockArea.rotateAnchorY = 0;
-      blockArea.scaleAnchorX = 0;
-      blockArea.scaleAnchorY = 0;
-      // We set startTime and endTime for block events by looking at previous events, since the structure only provides "time" for the keyframes
-      // We assume the first event's start is its own time
-      const populateStartTimes = (events: any[]) => {
-        for (let i = 0; i < events.length; i++) {
-          events[i].startSeconds = i > 0 ? events[i - 1].time : events[i].time;
-          events[i].endSeconds = events[i].time;
-        }
-      };
-      populateStartTimes(blockArea.rotateEvents);
-      populateStartTimes(blockArea.moveEvents);
-      populateStartTimes(blockArea.scaleEvents);
+      blockArea.chartCenter = { x: 0, y: 0 };
+      blockArea.chartSize = { x: 0, y: 0 };
+      blockArea.chartRotation = 0;
+      aniUpdate(blockArea.disappearTime);
 
       this.blockAreas.push(blockArea);
     }
@@ -478,15 +631,7 @@ export class Renderer {
       while (line.moveEventsIndex < line.judgeLineMoveEvents.length && line.judgeLineMoveEvents[line.moveEventsIndex].endSeconds < time) line.moveEventsIndex++;
       while (line.rotateEventsIndex < line.judgeLineRotateEvents.length && line.judgeLineRotateEvents[line.rotateEventsIndex].endSeconds < time) line.rotateEventsIndex++;
     }
-    for (const blockArea of this.blockAreas) {
-      blockArea.moveEventsIndex = 0;
-      blockArea.rotateEventsIndex = 0;
-      blockArea.scaleEventsIndex = 0;
-      if (time == null) continue;
-      while (blockArea.moveEventsIndex < blockArea.moveEvents.length && blockArea.moveEvents[blockArea.moveEventsIndex].endSeconds < time) blockArea.moveEventsIndex++;
-      while (blockArea.rotateEventsIndex < blockArea.rotateEvents.length && blockArea.rotateEvents[blockArea.rotateEventsIndex].endSeconds < time) blockArea.rotateEventsIndex++;
-      while (blockArea.scaleEventsIndex < blockArea.scaleEvents.length && blockArea.scaleEvents[blockArea.scaleEventsIndex].endSeconds < time) blockArea.scaleEventsIndex++;
-    }
+
   }
   public updateByTime(time: number): void {
     if (!this.initialized) throw new Error('Not initialized');
@@ -571,112 +716,27 @@ export class Renderer {
         setAlpha(note, -this.scaleX * note.positionX, this.scaleY * getBadY(note));
       }
     }
-    const tweenEases = [
-      (t: number) => t, // 0 - Linear
-      (t: number) => 1 - Math.cos(t * Math.PI / 2), // 1 - EaseInSine
-      (t: number) => Math.sin(t * Math.PI / 2), // 2 - EaseOutSine
-      (t: number) => (1 - Math.cos(t * Math.PI)) / 2, // 3 - EaseInOutSine
-      (t: number) => t ** 2, // 4 - EaseInQuad
-      (t: number) => 1 - (t - 1) ** 2, // 5 - EaseOutQuad
-      (t: number) => ((t *= 2) < 1 ? t ** 2 : -((t - 2) ** 2 - 2)) / 2, // 6 - EaseInOutQuad
-      (t: number) => t ** 3, // 7 - EaseInCubic
-      (t: number) => 1 + (t - 1) ** 3, // 8 - EaseOutCubic
-      (t: number) => ((t *= 2) < 1 ? t ** 3 : (t - 2) ** 3 + 2) / 2, // 9 - EaseInOutCubic
-      (t: number) => t ** 4, // 10 - EaseInQuart
-      (t: number) => 1 - (t - 1) ** 4, // 11 - EaseOutQuart
-      (t: number) => ((t *= 2) < 1 ? t ** 4 : -((t - 2) ** 4 - 2)) / 2, // 12 - EaseInOutQuart
-      () => 0, // 13 - Zero
-      () => 1, // 14 - One
-    ];
+    const W = this.canvasfg.width;
+    const H = this.canvasfg.height;
+    const aspect = H > 0 ? W / H : 1;
     for (const blockArea of this.blockAreas) {
-      blockArea.visible = time >= blockArea.appearTime && time <= blockArea.disappearTime;
+      blockArea.visible = time >= blockArea.appearTime && time < blockArea.disappearTime;
       if (!blockArea.visible) continue;
 
-      // Process move events
-      let activeMoveEvt = blockArea.moveEvents[blockArea.moveEventsIndex];
-      for (let i = blockArea.moveEventsIndex, len = blockArea.moveEvents.length; i < len; i++) {
-        activeMoveEvt = blockArea.moveEvents[i];
-        if (time <= activeMoveEvt.endSeconds) {
-          blockArea.moveEventsIndex = i;
-          break;
-        }
-        if (i === len - 1) blockArea.moveEventsIndex = i;
-      }
-      if (activeMoveEvt) {
-        const i = blockArea.moveEventsIndex;
-        const prevEvt = i > 0 ? blockArea.moveEvents[i - 1] : activeMoveEvt;
-        const startX = i > 0 ? prevEvt.endPosition.x : activeMoveEvt.endPosition.x;
-        const startY = i > 0 ? prevEvt.endPosition.y : activeMoveEvt.endPosition.y;
-        const dt = activeMoveEvt.endSeconds === activeMoveEvt.startSeconds ? 1 : Math.max(0, Math.min(1, (time - activeMoveEvt.startSeconds) / (activeMoveEvt.endSeconds - activeMoveEvt.startSeconds)));
-        const easeX = tweenEases[activeMoveEvt.easeTypeX] || tweenEases[0];
-        const easeY = tweenEases[activeMoveEvt.easeTypeY] || tweenEases[0];
-        const curX = startX + (activeMoveEvt.endPosition.x - startX) * easeX(dt);
-        const curY = startY + (activeMoveEvt.endPosition.y - startY) * easeY(dt);
-        blockArea.offsetX = this.matX(curX);
-        blockArea.offsetY = this.matY(curY);
-      }
-
-      // Process rotate events
-      let activeRotEvt = blockArea.rotateEvents[blockArea.rotateEventsIndex];
-      for (let i = blockArea.rotateEventsIndex, len = blockArea.rotateEvents.length; i < len; i++) {
-        activeRotEvt = blockArea.rotateEvents[i];
-        if (time <= activeRotEvt.endSeconds) {
-          blockArea.rotateEventsIndex = i;
-          break;
-        }
-        if (i === len - 1) blockArea.rotateEventsIndex = i;
-      }
-      if (activeRotEvt) {
-        const i = blockArea.rotateEventsIndex;
-        const prevEvt = i > 0 ? blockArea.rotateEvents[i - 1] : activeRotEvt;
-        const startRot = i > 0 ? prevEvt.rotation : activeRotEvt.rotation;
-        const dt = activeRotEvt.endSeconds === activeRotEvt.startSeconds ? 1 : Math.max(0, Math.min(1, (time - activeRotEvt.startSeconds) / (activeRotEvt.endSeconds - activeRotEvt.startSeconds)));
-        const ease = tweenEases[activeRotEvt.easeType] || tweenEases[0];
-        blockArea.rotation = this.matR(startRot + (activeRotEvt.rotation - startRot) * ease(dt));
-
-        const startAnchorX = i > 0 ? prevEvt.anchor.x : activeRotEvt.anchor.x;
-        const startAnchorY = i > 0 ? prevEvt.anchor.y : activeRotEvt.anchor.y;
-        const centerX = (blockArea.bottomLeftPercentage.x + blockArea.topRightPercentage.x) / 2;
-        const centerY = (blockArea.bottomLeftPercentage.y + blockArea.topRightPercentage.y) / 2;
-        const anchorX = startAnchorX;
-        const anchorY = startAnchorY;
-        blockArea.rotateAnchorX = this.matX(anchorX) - this.matX(centerX);
-        blockArea.rotateAnchorY = this.matY(anchorY) - this.matY(centerY);
-
-        blockArea.cosr = Math.cos(blockArea.rotation);
-        blockArea.sinr = Math.sin(blockArea.rotation);
-      }
-
-      // Process scale events
-      let activeScaleEvt = blockArea.scaleEvents[blockArea.scaleEventsIndex];
-      for (let i = blockArea.scaleEventsIndex, len = blockArea.scaleEvents.length; i < len; i++) {
-        activeScaleEvt = blockArea.scaleEvents[i];
-        if (time <= activeScaleEvt.endSeconds) {
-          blockArea.scaleEventsIndex = i;
-          break;
-        }
-        if (i === len - 1) blockArea.scaleEventsIndex = i;
-      }
-      if (activeScaleEvt) {
-        const i = blockArea.scaleEventsIndex;
-        const prevEvt = i > 0 ? blockArea.scaleEvents[i - 1] : activeScaleEvt;
-        const startScaleX = i > 0 ? prevEvt.scale.x : activeScaleEvt.scale.x;
-        const startScaleY = i > 0 ? prevEvt.scale.y : activeScaleEvt.scale.y;
-        const dt = activeScaleEvt.endSeconds === activeScaleEvt.startSeconds ? 1 : Math.max(0, Math.min(1, (time - activeScaleEvt.startSeconds) / (activeScaleEvt.endSeconds - activeScaleEvt.startSeconds)));
-        const easeX = tweenEases[activeScaleEvt.easeTypeX] || tweenEases[0];
-        const easeY = tweenEases[activeScaleEvt.easeTypeY] || tweenEases[0];
-        blockArea.scaleX = startScaleX + (activeScaleEvt.scale.x - startScaleX) * easeX(dt);
-        blockArea.scaleY = startScaleY + (activeScaleEvt.scale.y - startScaleY) * easeY(dt);
-
-        const startAnchorX = i > 0 ? prevEvt.anchor.x : activeScaleEvt.anchor.x;
-        const startAnchorY = i > 0 ? prevEvt.anchor.y : activeScaleEvt.anchor.y;
-        const centerX = (blockArea.bottomLeftPercentage.x + blockArea.topRightPercentage.x) / 2;
-        const centerY = (blockArea.bottomLeftPercentage.y + blockArea.topRightPercentage.y) / 2;
-        const anchorX = startAnchorX;
-        const anchorY = startAnchorY;
-        blockArea.scaleAnchorX = this.matX(anchorX) - this.matX(centerX);
-        blockArea.scaleAnchorY = this.matY(anchorY) - this.matY(centerY);
-      }
+      const tr = computeBlockAreaTransform(blockArea, time, aspect);
+      const canvasPos = chartToCanvas(tr.center, aspect, W, H);
+      blockArea.centerX = canvasPos.x;
+      blockArea.centerY = canvasPos.y;
+      blockArea.width = tr.size.x * 0.5 * W;
+      blockArea.height = tr.size.y * 0.5 * W;
+      blockArea.scaleX = tr.scale.x;
+      blockArea.scaleY = tr.scale.y;
+      blockArea.rotation = -tr.rotation * Math.PI / 180;
+      blockArea.cosr = Math.cos(blockArea.rotation);
+      blockArea.sinr = Math.sin(blockArea.rotation);
+      blockArea.chartCenter = tr.center;
+      blockArea.chartSize = tr.size;
+      blockArea.chartRotation = tr.rotation;
     }
   }
   private _setLowResFactor(num = 1) {
@@ -701,6 +761,7 @@ export class Renderer {
 export namespace Renderer {
   export type Note = NoteExtends;
   export type JudgeLine = JudgeLineExtends;
+  export type BlockArea = BlockAreaExtends;
 }
 //   // 规范判定线事件
 // function normalizeLineEvent(events: JudgeLineEvent[]) {

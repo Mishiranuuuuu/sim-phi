@@ -782,45 +782,69 @@ const hitFeedbackList = new HitEvents({ //   存放点击特效
 });
 const interact = new InteractProxy(canvas);
 
+function blockAreaContains(blockArea: any, p: { x: number; y: number }, inset: number): boolean {
+  const center = blockArea.chartCenter;
+  const size = blockArea.chartSize;
+  if (!center || !size) return false;
+  const rotRad = (blockArea.chartRotation || 0) * Math.PI / 180;
+  const c = Math.cos(rotRad);
+  const s = Math.sin(rotRad);
+
+  const dx = p.x - center.x;
+  const dy = p.y - center.y;
+  const localX = c * dx + s * dy;
+  const localY = -s * dx + c * dy;
+
+  const halfX = size.x * 0.5;
+  const halfY = size.y * 0.5;
+  if (halfX <= 0 || halfY <= 0) return false;
+
+  const sign = blockArea.isSubtract ? 1 : -1;
+  const insetX = Math.min(inset * 0.5, halfX * 0.25);
+  const insetY = Math.min(inset * 0.5, halfY * 0.25);
+
+  const boundX = halfX + sign * insetX;
+  const boundY = halfY + sign * insetY;
+
+  return Math.abs(localX) <= boundX && Math.abs(localY) <= boundY;
+}
+
 function checkNoiseField(x: number, y: number) {
   if (!app || !app.blockAreas || app.blockAreas.length === 0) return false;
-  let inNormal = false;
-  let inSubtract = false;
+  const W = canvasfg.width;
+  const H = canvasfg.height;
+  if (W === 0 || H === 0) return false;
+  const aspect = W / H;
+  const p = {
+    x: (2 * x / W) - 1,
+    y: (1 - (2 * y / H)) / aspect
+  };
+  const touchInset = (0.05 * 2.0) / aspect;
+
+  let origNon = false;
+  let origSub = 0;
+  let insNon = false;
+  let insSub = 0;
+
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || blockArea.isSubtract === undefined) continue;
-    const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
+    const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
     if (!isActive) continue;
 
-    const topX = blockArea.topRightPercentage.x * canvasfg.width;
-    const topY = blockArea.topRightPercentage.y * canvasfg.height;
-    const botX = blockArea.bottomLeftPercentage.x * canvasfg.width;
-    const botY = blockArea.bottomLeftPercentage.y * canvasfg.height;
-    const width = Math.abs(topX - botX);
-    const height = Math.abs(topY - botY);
-
-    const { scaleX, scaleY, cosr, sinr } = blockArea;
-    const scaledOriginX = (1 - scaleX) * blockArea.scaleAnchorX;
-    const scaledOriginY = (1 - scaleY) * blockArea.scaleAnchorY;
-    const offsetX = blockArea.offsetX + blockArea.rotateAnchorX + cosr * (scaledOriginX - blockArea.rotateAnchorX) - sinr * (scaledOriginY - blockArea.rotateAnchorY);
-    const offsetY = blockArea.offsetY + blockArea.rotateAnchorY + sinr * (scaledOriginX - blockArea.rotateAnchorX) + cosr * (scaledOriginY - blockArea.rotateAnchorY);
-
-    const dx = x - offsetX;
-    const dy = y - offsetY;
-    const rx = dx * cosr + dy * sinr;
-    const ry = -dx * sinr + dy * cosr;
-
-    if (scaleX === 0 || scaleY === 0) continue;
-
-    const x_local = rx / scaleX;
-    const y_local = ry / scaleY;
-
-    if (x_local >= -width / 2 && x_local <= width / 2 && y_local >= -height / 2 && y_local <= height / 2) {
-      if (blockArea.isSubtract) inSubtract = true;
-      else inNormal = true;
+    if (blockAreaContains(blockArea, p, 0)) {
+      if (blockArea.isSubtract) origSub++;
+      else origNon = true;
+    }
+    if (blockAreaContains(blockArea, p, touchInset)) {
+      if (blockArea.isSubtract) insSub++;
+      else insNon = true;
     }
   }
-  return inNormal !== inSubtract;
+
+  const origBlocked = origNon !== (origSub % 2 === 1);
+  const insBlocked = insNon !== (insSub % 2 === 1);
+  return origBlocked && insBlocked;
 }
 
 //   兼容PC鼠标
@@ -1264,13 +1288,16 @@ function loopCanvas() {
         if (!blockArea.visible) continue;
 
         if (debugBlockAreaText.checked) {
-          const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
-          debugTexts.push(`[Visible] BA${i}: active=${isActive}, isSub=${blockArea.isSubtract}, pos=(${blockArea.offsetX.toFixed(1)}, ${blockArea.offsetY.toFixed(1)}), scale=(${blockArea.scaleX.toFixed(2)}, ${blockArea.scaleY.toFixed(2)}), tr=(${blockArea.topRightPercentage.x.toFixed(2)}, ${blockArea.topRightPercentage.y.toFixed(2)}), bl=(${blockArea.bottomLeftPercentage.x.toFixed(2)}, ${blockArea.bottomLeftPercentage.y.toFixed(2)})`);
+          const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
+          debugTexts.push(`[Visible] BA${i}: active=${isActive}, isSub=${blockArea.isSubtract}, pos=(${blockArea.centerX.toFixed(1)}, ${blockArea.centerY.toFixed(1)}), size=(${blockArea.width.toFixed(1)}, ${blockArea.height.toFixed(1)}), scale=(${blockArea.scaleX.toFixed(2)}, ${blockArea.scaleY.toFixed(2)}), rot=${blockArea.chartRotation.toFixed(1)}°`);
         }
 
         if (debugBlockArea.checked) {
-          ctxfg.setTransform(blockArea.cosr, blockArea.sinr, -blockArea.sinr, blockArea.cosr, blockArea.offsetX, blockArea.offsetY);
+          ctxfg.setTransform(blockArea.cosr, blockArea.sinr, -blockArea.sinr, blockArea.cosr, blockArea.centerX, blockArea.centerY);
           ctxfg.globalAlpha = 1;
+          ctxfg.strokeStyle = blockArea.isSubtract ? '#00ffff' : '#ff0000';
+          ctxfg.lineWidth = 2;
+          ctxfg.strokeRect(-blockArea.width / 2, -blockArea.height / 2, blockArea.width, blockArea.height);
           ctxfg.fillStyle = 'orange';
           ctxfg.fillRect(-lineScale * 0.2, -lineScale * 0.2, lineScale * 0.4, lineScale * 0.4);
           ctxfg.fillStyle = 'white';
@@ -1553,47 +1580,24 @@ function drawBlockAreas() {
     ctx.clearRect(0, 0, noiseCanvas.width, noiseCanvas.height);
   }
 
-  function getTransformAndDim(blockArea: any) {
-    const topX = blockArea.topRightPercentage.x * ctxfg.canvas.width;
-    const topY = blockArea.topRightPercentage.y * ctxfg.canvas.height;
-    const botX = blockArea.bottomLeftPercentage.x * ctxfg.canvas.width;
-    const botY = blockArea.bottomLeftPercentage.y * ctxfg.canvas.height;
-
-    const width = Math.abs(topX - botX);
-    const height = Math.abs(topY - botY);
-    const x = -width / 2;
-    const y = -height / 2;
-    return { width, height, x, y };
-  }
-
-  function setCtxTransform(ctx: CanvasRenderingContext2D, blockArea: any) {
-    const { scaleX, scaleY, cosr, sinr } = blockArea;
-
-    // Move places the block in world space. Scale and rotation anchors are
-    // local pivots, so they shift the shape around its moved position rather
-    // than making the whole field orbit a fixed screen coordinate.
-    const scaledOriginX = (1 - scaleX) * blockArea.scaleAnchorX;
-    const scaledOriginY = (1 - scaleY) * blockArea.scaleAnchorY;
-    const offsetX = blockArea.offsetX + blockArea.rotateAnchorX + cosr * (scaledOriginX - blockArea.rotateAnchorX) - sinr * (scaledOriginY - blockArea.rotateAnchorY);
-    const offsetY = blockArea.offsetY + blockArea.rotateAnchorY + sinr * (scaledOriginX - blockArea.rotateAnchorX) + cosr * (scaledOriginY - blockArea.rotateAnchorY);
-
-    ctx.setTransform(
-      scaleX * cosr,
-      scaleX * sinr,
-      -scaleY * sinr,
-      scaleY * cosr,
-      offsetX,
-      offsetY
-    );
-  }
   function drawField(ctx: CanvasRenderingContext2D, blockArea: any) {
-    const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
+    const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
     const timeToActive = blockArea.enableTime - timeChart;
     const isPulsing = timeToActive > 0 && timeToActive <= 1.0;
-    const { width, height, x, y } = getTransformAndDim(blockArea);
+    const width = blockArea.width;
+    const height = blockArea.height;
+    const x = -width / 2;
+    const y = -height / 2;
 
     ctx.save();
-    setCtxTransform(ctx, blockArea);
+    ctx.setTransform(
+      blockArea.cosr,
+      blockArea.sinr,
+      -blockArea.sinr,
+      blockArea.cosr,
+      blockArea.centerX,
+      blockArea.centerY
+    );
 
     if (isActive) {
       ctx.fillStyle = 'rgb(255, 0, 0)';
@@ -1616,14 +1620,21 @@ function drawBlockAreas() {
   }
 
   function drawMask(ctx: CanvasRenderingContext2D, blockArea: any) {
-    const { width, height, x, y } = getTransformAndDim(blockArea);
+    const width = blockArea.width;
+    const height = blockArea.height;
+    const x = -width / 2;
+    const y = -height / 2;
     ctx.save();
-    setCtxTransform(ctx, blockArea);
+    ctx.setTransform(
+      blockArea.cosr,
+      blockArea.sinr,
+      -blockArea.sinr,
+      blockArea.cosr,
+      blockArea.centerX,
+      blockArea.centerY
+    );
     ctx.fillStyle = '#000';
     ctx.fillRect(x, y, width, height);
-    // ctx.lineWidth = 2;
-    // ctx.strokeStyle = '#000';
-    // ctx.strokeRect(x, y, width, height);
     ctx.restore();
   }
 
@@ -1631,14 +1642,14 @@ function drawBlockAreas() {
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || blockArea.isSubtract) continue;
-    const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
+    const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
     if (!isActive) drawField(normalFieldCtx!, blockArea);
     drawMask(normalFieldMaskCtx!, blockArea);
   }
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || blockArea.isSubtract) continue;
-    const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
+    const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
     if (isActive) drawField(normalFieldCtx!, blockArea);
   }
 
@@ -1646,14 +1657,14 @@ function drawBlockAreas() {
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || !blockArea.isSubtract) continue;
-    const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
+    const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
     if (!isActive) drawField(subtractFieldCtx!, blockArea);
     drawMask(subtractFieldMaskCtx!, blockArea);
   }
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || !blockArea.isSubtract) continue;
-    const isActive = timeChart >= blockArea.enableTime && timeChart <= blockArea.disableTime;
+    const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
     if (isActive) drawField(subtractFieldCtx!, blockArea);
   }
 
