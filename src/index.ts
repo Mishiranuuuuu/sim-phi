@@ -19,8 +19,10 @@ import { fixme } from '@/utils/fixme';
 import { MessageHandler } from '@/components/MessageHandler';
 import { AudioController } from '@/utils/AudioTools';
 import { LevelInfoHandler } from '@/components/InfoHandler';
+import { NoiseShaderRenderer, TouchPoint } from '@/utils/NoiseShader';
 const meta = ['Phi\x67ros Simulator', version.split('.'), pubdate, lastupdate] as typeof self._i;
 self._i = meta;
+const FONT_FAMILY = 'Saira,Custom,Noto Sans SC';
 const $id = (query: string): HTMLElement => document.getElementById(query) || (() => { throw new Error(`Cannot find element: ${query}`) })();
 const $ = (query: string) => document.body.querySelector(query);
 const $$ = (query: string) => document.body.querySelectorAll(query);
@@ -255,6 +257,7 @@ const showCE2 = new Checkbox('Early/Late Effects').appendBefore(resetCfg.contain
 const showPoint = new Checkbox('Show anchor point').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'showPoint'));
 const debugBlockArea = new Checkbox('Debug blockArea').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'debugBlockArea'));
 const debugBlockAreaText = new Checkbox('Show blockArea debug text').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'debugBlockAreaText'));
+const enableNoiseShader = new Checkbox('Noise field WebGL shader', true).appendBefore(resetCfg.container).hook(status.reg.bind(status, 'enableNoiseShader'));
 const showAcc = new Checkbox('Show Acc').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'showAcc'));
 const showStat = new Checkbox('Show statistics').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'showStat'));
 const lowRes = new Checkbox('Low resolution').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'lowRes'));
@@ -561,7 +564,7 @@ const hitWordList = new HitEvents({ //   存放点击特效
   iterateCallback(i: HitWord) {
     const tick = (nowTimeMS - i.time) / i.duration;
     ctxfg.setTransform(1, 0, 0, 1, i.offsetX, i.offsetY); //   缩放
-    ctxfg.font = `bold ${app.noteScaleRatio * (256 + 128 * (((0.2078 * tick - 1.6524) * tick + 1.6399) * tick + 0.4988))}px Custom,Noto Sans SC`;
+    ctxfg.font = `bold ${app.noteScaleRatio * (256 + 128 * (((0.2078 * tick - 1.6524) * tick + 1.6399) * tick + 0.4988))}px ${FONT_FAMILY}`;
     ctxfg.textAlign = 'center';
     ctxfg.fillStyle = i.color;
     ctxfg.globalAlpha = 1 - tick; //   不透明度
@@ -847,12 +850,21 @@ function checkNoiseField(x: number, y: number) {
   return origBlocked && insBlocked;
 }
 
+const noiseShaderRenderer = new NoiseShaderRenderer();
+const activeRawTouches = new Map<number | string, { x: number; y: number }>();
+const blockedFingerIds = new Set<number | string>();
+
 //   兼容PC鼠标
 interact.setMouseEvent({
   mousedownCallback(evt: MouseEvent) {
     const idx = evt.button;
     const { x, y } = getPos(evt);
-    if (checkNoiseField(x, y)) return;
+    const id = 'mouse_' + idx;
+    activeRawTouches.set(id, { x, y });
+    if (checkNoiseField(x, y)) {
+      blockedFingerIds.add(id);
+      return;
+    }
     if (idx === 1) hitManager.activate('mouse', 4, x, y);
     else if (idx === 2) hitManager.activate('mouse', 2, x, y);
     else hitManager.activate('mouse', 1 << idx, x, y);
@@ -861,6 +873,19 @@ interact.setMouseEvent({
   mousemoveCallback(evt: MouseEvent) {
     const idx = evt.buttons;
     const { x, y } = getPos(evt);
+    if (idx > 0) {
+      activeRawTouches.set('mouse_0', { x, y });
+      if (checkNoiseField(x, y)) {
+        blockedFingerIds.add('mouse_0');
+      }
+    } else {
+      activeRawTouches.delete('mouse_0');
+      activeRawTouches.delete('mouse_1');
+      activeRawTouches.delete('mouse_2');
+      blockedFingerIds.delete('mouse_0');
+      blockedFingerIds.delete('mouse_1');
+      blockedFingerIds.delete('mouse_2');
+    }
     const inNoise = checkNoiseField(x, y);
     for (let i = 1; i < 32; i <<= 1) {
       //   同时按住多个键时，只有最后一个键的move事件会触发
@@ -874,6 +899,11 @@ interact.setMouseEvent({
   },
   mouseupCallback(evt: MouseEvent) {
     const idx = evt.button;
+    const id = 'mouse_' + idx;
+    activeRawTouches.delete(id);
+    activeRawTouches.delete('mouse_0');
+    blockedFingerIds.delete(id);
+    blockedFingerIds.delete('mouse_0');
     if (idx === 1) hitManager.deactivate('mouse', 4);
     else if (idx === 2) hitManager.deactivate('mouse', 2);
     else hitManager.deactivate('mouse', 1 << idx);
@@ -895,13 +925,20 @@ interact.setKeyboardEvent({
 });
 self.addEventListener('blur', () => {
   hitManager.clear('keyboard');
+  activeRawTouches.clear();
+  blockedFingerIds.clear();
+  noiseShaderRenderer.resetTouches();
 });
 //   兼容移动设备
 interact.setTouchEvent({
   touchstartCallback(evt: TouchEvent) {
     for (const touch of evt.changedTouches) {
       const { x, y } = getPos(touch);
-      if (checkNoiseField(x, y)) continue;
+      activeRawTouches.set(touch.identifier, { x, y });
+      if (checkNoiseField(x, y)) {
+        blockedFingerIds.add(touch.identifier);
+        continue;
+      }
       hitManager.activate('touch', touch.identifier, x, y);
       specialClick.activate(x, y);
     }
@@ -909,16 +946,29 @@ interact.setTouchEvent({
   touchmoveCallback(evt: TouchEvent) {
     for (const touch of evt.changedTouches) {
       const { x, y } = getPos(touch);
-      if (checkNoiseField(x, y)) hitManager.deactivate('touch', touch.identifier);
-      else hitManager.moving('touch', touch.identifier, x, y);
+      activeRawTouches.set(touch.identifier, { x, y });
+      if (checkNoiseField(x, y)) {
+        blockedFingerIds.add(touch.identifier);
+        hitManager.deactivate('touch', touch.identifier);
+      } else {
+        hitManager.moving('touch', touch.identifier, x, y);
+      }
     }
   },
   touchendCallback(evt: TouchEvent) {
-    for (const touch of evt.changedTouches) hitManager.deactivate('touch', touch.identifier);
+    for (const touch of evt.changedTouches) {
+      activeRawTouches.delete(touch.identifier);
+      blockedFingerIds.delete(touch.identifier);
+      hitManager.deactivate('touch', touch.identifier);
+    }
   },
   touchcancelCallback(evt: TouchEvent) {
     //   if (emitter.eq('play')) mainPause(); TODO: 意外暂停提醒
-    for (const touch of evt.changedTouches) hitManager.deactivate('touch', touch.identifier);
+    for (const touch of evt.changedTouches) {
+      activeRawTouches.delete(touch.identifier);
+      blockedFingerIds.delete(touch.identifier);
+      hitManager.deactivate('touch', touch.identifier);
+    }
   }
 });
 function getPos(obj: MouseEvent | Touch) {
@@ -994,8 +1044,8 @@ window.addEventListener('load', (): void => {
     const entries = ['Tap', 'TapHL', 'Drag', 'DragHL', 'HoldHead', 'HoldHeadHL', 'Hold', 'HoldHL', 'HoldEnd', 'Flick', 'FlickHL'];
     await fixme(raw, res);
     await Promise.all(entries.map(async i => noteRender.update(i, res[i] as ImageBitmap, 8080 / Number(raw.image[i].split('|')[1]))));
-    // for (const entry of entries) await noteRender.update(entry, res[entry], 8080 / raw.image[entry].split('|')[1]);
     await noteRender.updateFX(res.HitFXRaw, 8080 / Number(raw.image.HitFXRaw.split('|')[1]));
+    noiseShaderRenderer.loadTexturesFromPack(raw.image);
     res.NoImageBlack = await createImageBitmap(new ImageData(new Uint8ClampedArray(4).fill(0), 1, 1));
     res.NoImageWhite = await createImageBitmap(new ImageData(new Uint8ClampedArray(4).fill(255), 1, 1));
     res.JudgeLineMP = await imgShader(res.JudgeLine, '#feffa9');
@@ -1157,7 +1207,7 @@ function mainLoop() {
   for (const callback of main.afterAll.values()) callback();
   // Copyright
   ctx.globalCompositeOperation = 'difference';
-  ctx.font = `${lineScale * 0.3}px Custom,Noto Sans SC`;
+  ctx.font = `${lineScale * 0.3}px ${FONT_FAMILY}`;
   ctx.fillStyle = '#fff';
   ctx.globalAlpha = 0.8;
   ctx.textAlign = 'center';
@@ -1232,6 +1282,19 @@ function loopCanvas() {
   const { lineScale, wlen, hlen } = app;
   const { bgImage, bgVideo } = tmps;
   ctxfg.clearRect(0, 0, canvasfg.width, canvasfg.height); //   重置画面
+
+  // Update touch tracking for noise field dissolution (ONLY for fingers contacting active noise zones)
+  const touchPoints: TouchPoint[] = [];
+  if (emitter.eq('play')) {
+    for (const id of blockedFingerIds) {
+      const pos = activeRawTouches.get(id);
+      if (pos) {
+        touchPoints.push({ id, x: pos.x, y: pos.y });
+      }
+    }
+  }
+  noiseShaderRenderer.updateTouches(touchPoints, timeChart);
+
   //   绘制背景
   ctxfg.globalAlpha = 1;
   ctxfg.drawImage(bgImage, ...adjustSize(bgImage, canvasfg, 1));
@@ -1247,17 +1310,22 @@ function loopCanvas() {
   ctxfg.globalAlpha = app.brightness; //   背景不透明度
   ctxfg.fillRect(0, 0, canvasfg.width, canvasfg.height);
   if (timeIn.second >= 2.5 && tmps.customBackDraw != null) tmps.customBackDraw(ctxfg); //   自定义背景
+
+  // Disabled noise zones (Background sorting layer order 2, before judge lines order 3)
+  if (timeIn.second >= 2.5) {
+    drawDisabledBlockZones();
+  }
+
   // if (awawa) ctxfg.filter = `hue-rotate(${stat.combo*360/7}deg)`;
   if (timeIn.second >= 2.5) drawLine(stat.lineStatus ? 2 : 1, lineScale); //   绘制判定线(背景前1)
   // if (awawa) ctxfg.filter = 'none';
   ctxfg.resetTransform();
   if (timeIn.second >= 3 && timeOut.second === 0) {
-    // drawBlockAreas(); // Moved to the end of loopCanvas
     //   绘制note
     drawNotes();
     if (showPoint.checked) {
       //   绘制定位点
-      ctxfg.font = `${lineScale}px Custom,Noto Sans SC`;
+      ctxfg.font = `${lineScale}px ${FONT_FAMILY}`;
       ctxfg.textAlign = 'center';
       for (const line of app.linesReversed) {
         ctxfg.setTransform(line.cosr, line.sinr, -line.sinr, line.cosr, line.offsetX, line.offsetY);
@@ -1280,7 +1348,7 @@ function loopCanvas() {
       }
     }
     if (debugBlockArea.checked || debugBlockAreaText.checked) {
-      ctxfg.font = `${lineScale}px Custom,Noto Sans SC`;
+      ctxfg.font = `${lineScale}px ${FONT_FAMILY}`;
       ctxfg.textAlign = 'center';
       const debugTexts: string[] = [];
       for (let i = 0; i < app.blockAreas.length; i++) {
@@ -1308,7 +1376,7 @@ function loopCanvas() {
       if (debugBlockAreaText.checked) {
         ctxfg.resetTransform();
         ctxfg.textAlign = 'left';
-        ctxfg.font = `${lineScale * 0.55}px Custom,Noto Sans SC`;
+        ctxfg.font = `${lineScale * 0.55}px ${FONT_FAMILY}`;
         ctxfg.fillStyle = 'white';
         ctxfg.globalAlpha = 1;
         let textY = lineScale * 2.5;
@@ -1324,6 +1392,7 @@ function loopCanvas() {
   // if (awawa) ctxfg.filter = 'none';
   if (showCE2.checked) hitWordList.animate(); //   绘制打击特效2
   ctxfg.globalAlpha = 1;
+
   //   绘制进度条
   ctxfg.setTransform(canvasfg.width / 1920, 0, 0, canvasfg.width / 1920, 0, lineScale * (timeIn.second < 0.67 ? tween.easeOutSine(timeIn.second * 1.5) - 1 : -tween.easeOutSine(timeOut.second * 1.5)) * 1.75);
   ctxfg.drawImage(res.ProgressBar, tmps.progress * 1920 - 1920, 0);
@@ -1353,19 +1422,19 @@ function loopCanvas() {
   ctxfg.globalAlpha = 1;
   ctxfg.setTransform(1, 0, 0, 1, 0, lineScale * (timeIn.second < 0.67 ? tween.easeOutSine(timeIn.second * 1.5) - 1 : -tween.easeOutSine(timeOut.second * 1.5)) * 1.75);
   if (tmps.showStat) {
-    ctxfg.font = `${lineScale * 0.95}px Custom,Noto Sans SC`;
+    ctxfg.font = `${lineScale * 0.95}px ${FONT_FAMILY}`;
     ctxfg.textAlign = 'right';
     ctxfg.fillText(stat.scoreStr, canvasfg.width - lineScale * 0.65, lineScale * 1.375);
     if (showAcc.checked) {
-      ctxfg.font = `${lineScale * 0.66}px Custom,Noto Sans SC`;
+      ctxfg.font = `${lineScale * 0.66}px ${FONT_FAMILY}`;
       ctxfg.fillText(stat.accStr, canvasfg.width - lineScale * 0.65, lineScale * 2.05);
     }
   }
   ctxfg.textAlign = 'center';
-  ctxfg.font = `${lineScale * 1.32}px Custom,Noto Sans SC`;
+  ctxfg.font = `${lineScale * 1.32}px ${FONT_FAMILY}`;
   ctxfg.fillText(tmps.combo, wlen, lineScale * 1.375);
   ctxfg.globalAlpha = timeIn.second < 0.67 ? tween.easeOutSine(timeIn.second * 1.5) : 1 - tween.easeOutSine(timeOut.second * 1.5);
-  ctxfg.font = `${lineScale * 0.66}px Custom,Noto Sans SC`;
+  ctxfg.font = `${lineScale * 0.66}px ${FONT_FAMILY}`;
   ctxfg.fillText(tmps.combo2, wlen, lineScale * 2.05);
   //   绘制曲名和等级
   ctxfg.globalAlpha = 1;
@@ -1379,7 +1448,7 @@ function loopCanvas() {
   ctxfg.fillStyle = '#fff';
   if (timeIn.second < 0.67) ctxfg.globalAlpha = tween.easeOutSine(timeIn.second * 1.5);
   else ctxfg.globalAlpha = 1 - tween.easeOutSine(timeOut.second * 1.5);
-  ctxfg.font = `${lineScale * 0.4}px Custom,Noto Sans SC`;
+  ctxfg.font = `${lineScale * 0.4}px ${FONT_FAMILY}`;
   ctxfg.textAlign = 'left';
   ctxfg.fillText(`${time2Str(main.awawa ? duration0 - timeBgm : timeBgm)}/${time2Str(duration0)}${status2.text}`, lineScale * 0.05, lineScale * 0.6);
   ctxfg.fillText(stat.format, canvasfg.width - lineScale * 4.35, lineScale * 0.6);
@@ -1410,8 +1479,9 @@ function loopCanvas() {
   if (checkFeedback.checked) hitFeedbackList.animate(); //   绘制打击特效0
   ctxfg.resetTransform();
 
-  if (timeIn.second >= 3 && timeOut.second === 0) {
-    drawBlockAreas();
+  // Active noise zones overlay (Renders over notes, hit FX, and UI elements)
+  if (timeIn.second >= 2.5 && timeOut.second === 0) {
+    drawActiveBlockZones();
   }
 }
 //   判定线函数，undefined/0:默认,1:非,2:恒成立
@@ -1430,9 +1500,9 @@ function drawLine(bool: number, lineScale: number) {
   ctxfg.globalAlpha = 1;
 }
 function fillTextNode(text: string, x: number, y: number, size: number, maxWidth: number) {
-  ctxfg.font = `${size}px Custom,Noto Sans SC`;
+  ctxfg.font = `${size}px ${FONT_FAMILY}`;
   const dx = ctxfg.measureText(text).width;
-  if (dx > maxWidth) ctxfg.font = `${size / dx * maxWidth}px Custom,Noto Sans SC`;
+  if (dx > maxWidth) ctxfg.font = `${size / dx * maxWidth}px ${FONT_FAMILY}`;
   ctxfg.fillText(text, x, y);
   return dx;
 }
@@ -1465,7 +1535,7 @@ function atDraw3(statData: StatData) {
   ctxfg.textAlign = 'left';
   fillTextNode(inputName.value || inputName.placeholder, 700 * tween.easeOutCubic(clip(timeEnd.second * 1.25)) - 320, 160, 80, 1500);
   const textWidth = fillTextNode(levelInfoHandler.text, 700 * tween.easeOutCubic(clip(timeEnd.second * 1.25)) - 317, 212, 30, 750);
-  ctxfg.font = '30px Custom,Noto Sans SC';
+  ctxfg.font = `30px ${FONT_FAMILY}`;
   //   Rank图标
   ctxfg.globalAlpha = clip((timeEnd.second - 1.87) * 3.75);
   const outerSize = 293 + clip((timeEnd.second - 1.87) * 3.75) * 100;
@@ -1492,10 +1562,10 @@ function atDraw3(statData: StatData) {
   ctxfg.fillText(statData.textBelowStr, 1355, 595);
   ctxfg.fillStyle = '#fff';
   ctxfg.textAlign = 'center';
-  ctxfg.font = '86px Custom,Noto Sans SC';
+  ctxfg.font = `86px ${FONT_FAMILY}`;
   ctxfg.globalAlpha = clip((timeEnd.second - 1.12) * 2.0);
   ctxfg.fillText(stat.scoreStr, 1075, 569);
-  ctxfg.font = '26px Custom,Noto Sans SC';
+  ctxfg.font = `26px ${FONT_FAMILY}`;
   ctxfg.globalAlpha = clip((timeEnd.second - 0.87) * 2.5);
   ctxfg.fillText(stat.perfect.toString(), 891, 650);
   ctxfg.globalAlpha = clip((timeEnd.second - 1.07) * 2.5);
@@ -1504,7 +1574,7 @@ function atDraw3(statData: StatData) {
   ctxfg.fillText(stat.noteRank[6].toString(), 1196, 650);
   ctxfg.globalAlpha = clip((timeEnd.second - 1.47) * 2.5);
   ctxfg.fillText(stat.noteRank[2].toString(), 1349, 650);
-  ctxfg.font = '22px Custom,Noto Sans SC';
+  ctxfg.font = `22px ${FONT_FAMILY}`;
   const transition = clip((main.pressTime > 0 ? timeEnd.second - main.pressTime : 0.2 - timeEnd.second - main.pressTime) * 5.0);
   ctxfg.globalAlpha = 0.8 * clip((timeEnd.second - 0.87) * 2.5) * transition;
   ctxfg.fillStyle = '#696';
@@ -1538,58 +1608,51 @@ interface ScaledHitFX {
   numOfParts: number;
   duration: number;
 }
-let noiseCanvas: HTMLCanvasElement | null = null;
-let noiseCtx: CanvasRenderingContext2D | null = null;
-let normalFieldCanvas: HTMLCanvasElement | null = null;
-let normalFieldCtx: CanvasRenderingContext2D | null = null;
-let normalFieldMaskCanvas: HTMLCanvasElement | null = null;
-let normalFieldMaskCtx: CanvasRenderingContext2D | null = null;
-let subtractFieldCanvas: HTMLCanvasElement | null = null;
-let subtractFieldCtx: CanvasRenderingContext2D | null = null;
-let subtractFieldMaskCanvas: HTMLCanvasElement | null = null;
-let subtractFieldMaskCtx: CanvasRenderingContext2D | null = null;
+let ourNoiseCanvas: HTMLCanvasElement | null = null;
+let ourNoiseCtx: CanvasRenderingContext2D | null = null;
+let ourNormalFieldCanvas: HTMLCanvasElement | null = null;
+let ourNormalFieldCtx: CanvasRenderingContext2D | null = null;
+let ourNormalFieldMaskCanvas: HTMLCanvasElement | null = null;
+let ourNormalFieldMaskCtx: CanvasRenderingContext2D | null = null;
+let ourSubtractFieldCanvas: HTMLCanvasElement | null = null;
+let ourSubtractFieldCtx: CanvasRenderingContext2D | null = null;
+let ourSubtractFieldMaskCanvas: HTMLCanvasElement | null = null;
+let ourSubtractFieldMaskCtx: CanvasRenderingContext2D | null = null;
 
-function drawBlockAreas() {
+function drawOurOwnBlockAreas() {
   if (app.blockAreas.length === 0) return;
 
-  if (!noiseCanvas || !normalFieldCanvas || !normalFieldMaskCanvas || !subtractFieldCanvas || !subtractFieldMaskCanvas) {
-    noiseCanvas = document.createElement('canvas');
-    normalFieldCanvas = document.createElement('canvas');
-    normalFieldMaskCanvas = document.createElement('canvas');
-    subtractFieldCanvas = document.createElement('canvas');
-    subtractFieldMaskCanvas = document.createElement('canvas');
-    noiseCtx = noiseCanvas.getContext('2d');
-    normalFieldCtx = normalFieldCanvas.getContext('2d');
-    normalFieldMaskCtx = normalFieldMaskCanvas.getContext('2d');
-    subtractFieldCtx = subtractFieldCanvas.getContext('2d');
-    subtractFieldMaskCtx = subtractFieldMaskCanvas.getContext('2d');
+  if (!ourNoiseCanvas || !ourNormalFieldCanvas || !ourNormalFieldMaskCanvas || !ourSubtractFieldCanvas || !ourSubtractFieldMaskCanvas) {
+    ourNoiseCanvas = document.createElement('canvas');
+    ourNormalFieldCanvas = document.createElement('canvas');
+    ourNormalFieldMaskCanvas = document.createElement('canvas');
+    ourSubtractFieldCanvas = document.createElement('canvas');
+    ourSubtractFieldMaskCanvas = document.createElement('canvas');
+    ourNoiseCtx = ourNoiseCanvas.getContext('2d');
+    ourNormalFieldCtx = ourNormalFieldCanvas.getContext('2d');
+    ourNormalFieldMaskCtx = ourNormalFieldMaskCanvas.getContext('2d');
+    ourSubtractFieldCtx = ourSubtractFieldCanvas.getContext('2d');
+    ourSubtractFieldMaskCtx = ourSubtractFieldMaskCanvas.getContext('2d');
   }
 
-  if (noiseCanvas.width !== ctxfg.canvas.width || noiseCanvas.height !== ctxfg.canvas.height) {
-    for (const canvas of [noiseCanvas, normalFieldCanvas, normalFieldMaskCanvas, subtractFieldCanvas, subtractFieldMaskCanvas]) {
-      canvas.width = ctxfg.canvas.width;
-      canvas.height = ctxfg.canvas.height;
+  const W = canvasfg.width;
+  const H = canvasfg.height;
+  if (ourNoiseCanvas.width !== W || ourNoiseCanvas.height !== H) {
+    for (const c of [ourNoiseCanvas, ourNormalFieldCanvas, ourNormalFieldMaskCanvas, ourSubtractFieldCanvas, ourSubtractFieldMaskCanvas]) {
+      c.width = W;
+      c.height = H;
     }
   }
 
-  const layers = [noiseCtx!, normalFieldCtx!, normalFieldMaskCtx!, subtractFieldCtx!, subtractFieldMaskCtx!];
-  for (const ctx of layers) {
-    ctx.resetTransform();
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.clearRect(0, 0, noiseCanvas.width, noiseCanvas.height);
+  const layers = [ourNoiseCtx!, ourNormalFieldCtx!, ourNormalFieldMaskCtx!, ourSubtractFieldCtx!, ourSubtractFieldMaskCtx!];
+  for (const c of layers) {
+    c.resetTransform();
+    c.globalAlpha = 1;
+    c.globalCompositeOperation = 'source-over';
+    c.clearRect(0, 0, W, H);
   }
 
-  function drawField(ctx: CanvasRenderingContext2D, blockArea: any) {
-    const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
-    const timeToActive = blockArea.enableTime - timeChart;
-    const isPulsing = timeToActive > 0 && timeToActive <= 1.0;
-    const width = blockArea.width;
-    const height = blockArea.height;
-    const x = -width / 2;
-    const y = -height / 2;
-
-    ctx.save();
+  function setCtxTransform(ctx: CanvasRenderingContext2D, blockArea: any) {
     ctx.setTransform(
       blockArea.cosr,
       blockArea.sinr,
@@ -1598,6 +1661,24 @@ function drawBlockAreas() {
       blockArea.centerX,
       blockArea.centerY
     );
+  }
+
+  function drawField(ctx: CanvasRenderingContext2D, blockArea: any) {
+    const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
+    const timeToActive = blockArea.enableTime - timeChart;
+    const isPulsing = timeToActive > 0 && timeToActive <= 1.0;
+    const fadesIn = blockArea.appearTime < blockArea.enableTime;
+    const opacity = (!isActive && fadesIn)
+      ? Math.max(0, Math.min(1, (timeChart - blockArea.appearTime) / 0.5))
+      : 1.0;
+    const width = blockArea.width;
+    const height = blockArea.height;
+    const x = -width / 2;
+    const y = -height / 2;
+
+    ctx.save();
+    setCtxTransform(ctx, blockArea);
+    ctx.globalAlpha = opacity;
 
     if (isActive) {
       ctx.fillStyle = 'rgb(255, 0, 0)';
@@ -1625,14 +1706,7 @@ function drawBlockAreas() {
     const x = -width / 2;
     const y = -height / 2;
     ctx.save();
-    ctx.setTransform(
-      blockArea.cosr,
-      blockArea.sinr,
-      -blockArea.sinr,
-      blockArea.cosr,
-      blockArea.centerX,
-      blockArea.centerY
-    );
+    setCtxTransform(ctx, blockArea);
     ctx.fillStyle = '#000';
     ctx.fillRect(x, y, width, height);
     ctx.restore();
@@ -1643,14 +1717,14 @@ function drawBlockAreas() {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || blockArea.isSubtract) continue;
     const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
-    if (!isActive) drawField(normalFieldCtx!, blockArea);
-    drawMask(normalFieldMaskCtx!, blockArea);
+    if (!isActive) drawField(ourNormalFieldCtx!, blockArea);
+    drawMask(ourNormalFieldMaskCtx!, blockArea);
   }
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || blockArea.isSubtract) continue;
     const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
-    if (isActive) drawField(normalFieldCtx!, blockArea);
+    if (isActive) drawField(ourNormalFieldCtx!, blockArea);
   }
 
   // Build subtract-field visuals and their opaque union mask.
@@ -1658,31 +1732,50 @@ function drawBlockAreas() {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || !blockArea.isSubtract) continue;
     const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
-    if (!isActive) drawField(subtractFieldCtx!, blockArea);
-    drawMask(subtractFieldMaskCtx!, blockArea);
+    if (!isActive) drawField(ourSubtractFieldCtx!, blockArea);
+    drawMask(ourSubtractFieldMaskCtx!, blockArea);
   }
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || !blockArea.isSubtract) continue;
     const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
-    if (isActive) drawField(subtractFieldCtx!, blockArea);
+    if (isActive) drawField(ourSubtractFieldCtx!, blockArea);
   }
 
-  // Keep the exclusive portions of both field sets: normal \ subtract and
-  // subtract \ normal. Their intersection remains fully transparent.
-  normalFieldCtx!.globalCompositeOperation = 'destination-out';
-  normalFieldCtx!.drawImage(subtractFieldMaskCanvas!, 0, 0);
-  subtractFieldCtx!.globalCompositeOperation = 'destination-out';
-  subtractFieldCtx!.drawImage(normalFieldMaskCanvas!, 0, 0);
+  // Exclusive subtraction: normal \ subtract and subtract \ normal
+  ourNormalFieldCtx!.globalCompositeOperation = 'destination-out';
+  ourNormalFieldCtx!.drawImage(ourSubtractFieldMaskCanvas!, 0, 0);
+  ourSubtractFieldCtx!.globalCompositeOperation = 'destination-out';
+  ourSubtractFieldCtx!.drawImage(ourNormalFieldMaskCanvas!, 0, 0);
 
-  noiseCtx!.drawImage(normalFieldCanvas!, 0, 0);
-  noiseCtx!.drawImage(subtractFieldCanvas!, 0, 0);
+  ourNoiseCtx!.drawImage(ourNormalFieldCanvas!, 0, 0);
+  ourNoiseCtx!.drawImage(ourSubtractFieldCanvas!, 0, 0);
 
   // Draw final result to the main canvas
+  ctxfg.save();
+  ctxfg.resetTransform();
   ctxfg.globalCompositeOperation = 'source-over';
   ctxfg.globalAlpha = 0.45;
-  ctxfg.drawImage(noiseCanvas, 0, 0);
-  ctxfg.globalAlpha = 1.0;
+  ctxfg.drawImage(ourNoiseCanvas, 0, 0);
+  ctxfg.restore();
+}
+
+function drawDisabledBlockZones() {
+  if (app.blockAreas.length === 0) return;
+  if (enableNoiseShader.checked) {
+    const aspect = canvasfg.width / canvasfg.height;
+    noiseShaderRenderer.drawDisabled(ctxfg, aspect, app.blockAreas, timeChart, true);
+  }
+}
+
+function drawActiveBlockZones() {
+  if (app.blockAreas.length === 0) return;
+  if (enableNoiseShader.checked) {
+    const aspect = canvasfg.width / canvasfg.height;
+    noiseShaderRenderer.drawActive(ctxfg, aspect, app.blockAreas, timeChart, true);
+  } else {
+    drawOurOwnBlockAreas();
+  }
 }
 
 //   绘制Note
@@ -1919,6 +2012,9 @@ async function mainPlay(): Promise<void> {
     curTime = 0;
     curTimeMS = 0;
     duration0 = 0;
+    activeRawTouches.clear();
+    blockedFingerIds.clear();
+    noiseShaderRenderer.resetTouches();
     for (const callback of main.end.values()) await callback();
   }
 }
@@ -1976,6 +2072,8 @@ async function mainPause() {
     curTime = timeBgm;
     audio.stop();
     audio.play(res.mute, { loop: true }); //   TODO: 重构
+    blockedFingerIds.clear();
+    noiseShaderRenderer.resetTouches();
     emitter.emit('pause');
   } else {
     if (app.bgVideo != null) await playVideo(app.bgVideo, timeBgm * app.speed);

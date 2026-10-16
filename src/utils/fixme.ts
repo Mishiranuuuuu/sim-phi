@@ -153,11 +153,11 @@ export async function fixme(raw: Record<string, unknown>, res: Record<string, un
     ctx.globalAlpha = 1;
     ctx.fillStyle = 'white';
     ctx.textAlign = 'right';
-    ctx.font = 'bold 30px Custom';
+    ctx.font = 'bold 30px Saira,Custom';
     ctx.fillText('ACC:', 240, 172);
     ctx.fillText('Max combo:', 1420, 172);
     ctx.textAlign = 'center';
-    ctx.font = 'bold 22px Custom';
+    ctx.font = 'bold 22px Saira,Custom';
     ctx.fillText('Perfect', 788, 304);
     ctx.fillText('Good', 942, 304);
     ctx.fillText('Bad', 1096, 304);

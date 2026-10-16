@@ -41,7 +41,7 @@ export async function checkSupport({
     errorCallback(errmsg1, errmsg3, true);
     return false;
   };
-  await Utils.addFont('Titillium Web', { alt: 'Custom' });
+  // await Utils.addFont('Titillium Web', { alt: 'Custom' });
   //   兼容性检测
   messageCallback('检查浏览器兼容性...');
   // eslint-disable-next-line @typescript-eslint/no-deprecated

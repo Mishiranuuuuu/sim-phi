@@ -1,6 +1,11 @@
 @font-face {
+  font-family: Saira;
+  src: url('/src/Saira-Regular.otf') format('opentype');
+}
+
+@font-face {
   font-family: Custom;
-  src: url('/src/font.woff2') format('woff2');
+  src: url('/src/Saira-Regular.otf') format('opentype');
 }
 
 html,
@@ -16,7 +21,7 @@ body {
 }
 
 #stage {
-  font-family: Custom, Consolas, Menlo, monospace;
+  font-family: Saira, Custom, Consolas, Menlo, monospace;
   font-size: 4vmin;
   color: gray;
   position: relative;
