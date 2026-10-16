@@ -1,58 +1,110 @@
-# <!-- prettier-ignore -->[SimPhiCore](https://lchz&#104;3473.github.io/sim-phi/index)
+# Phigros Simulator (Modded)
 
-> 这不是 Phi&#103;ros，这是在线的模拟器！  
-> This is not Phi&#103;ros; it's an online simulator!
+> An enhanced web-based Phigros & PGS simulator built with TypeScript, HTML5 Canvas, and WebGL.  
+> Originally created by [lchzh3473](https://github.com/lchzh3473/sim-phi) &bull; Modded by **WakaranaiDesu**.
 
-## 简介 | Introduction
+---
 
-如题，用 JS/Canvas 重现 [Phi&#103;ros](https://www.taptap.com/app/165287) 游戏画面。  
-As mentioned, this project uses JS/Canvas to recreate the visuals of [Phi&#103;ros](https://www.taptap.com/app/165287).
+## What This Mod Offers
 
-本项目属于个人兴趣项目，仅用于学习和测试。  
-This is a personal interest project, intended for learning and testing only.
+This fork brings extensive enhancements, official Phigros chart mechanics, custom WebGL shaders, and quality-of-life features to the web simulator:
 
-**由于本项目正在进行模块化重构，近期代码可能存在较大变动。**  
-**As the project undergoes modular restructuring, significant changes in the code are expected in the near future.**
+### Full Phigros Block Area & Noise Field
 
-特别感谢 [@AsakuraMizu](https://github.com/AsakuraMizu) 强力推荐的 [Vite](https://vitejs.dev) 驱动！  
-Special thanks to [@AsakuraMizu](https://github.com/AsakuraMizu) for the strong recommendation of [Vite](https://vitejs.dev)!
+- **Complete Event Parsing**: Full support for `blockAreaList` including `moveEvents`, `rotateEvents`, and `scaleEvents` with custom easing equations (`blockEasing`).
+- **Hierarchical Anchor Mechanics**: Independent rotation anchors and scale anchor pivot points with historical coordinate transformation.
+- **Accurate Touch Blockage**: Active normal block areas block player touches from triggering notes, while subtract block areas exempt touches from blockage.
+- **Smooth Fade & Timing**: Implements `appearTime`, `enableTime`, `disableTime`, and `disappearTime` transitions.
 
-以及看到这个页面的你！  
-And You, for visiting this page!
+### Noise Field Renderer
 
-## 文档 | Documentation
+Choose your preferred rendering style dynamically from the in-game **Settings** menu:
 
-访问 <!-- prettier-ignore -->[docs.lchz&#104;.net](https://docs.lchz&#104;.net/project/sim-phi-core) (WIP/开发中) 以查看文档。  
-There is no English documentation available yet; use a translator if necessary.
+- **WebGL Shader Mode (`Noise field WebGL shader` ON)**:
+  - Screen-space noise distortion with displacement textures (`BlockNoise1`).
+  - Animated sparkling particle effects (`PointNoise`).
+  - Atmospheric noise tint (`FD_Noise_00000`) and glowing edge dilation.
+  - Interactive touch dissolution ripples (`TouchHover`) that react to player fingers.
+- **2D Canvas Fallback Mode (`Noise field WebGL shader` OFF)**:
+  - Lightweight, high-performance canvas composite renderer.
+  - Distinct pulsating white warning state during the 1-second interval before activation.
+  - Vibrant red active field with real-time `destination-out` subtract cutout masks.
 
-## 更新日志 | Changelog
+### Developer & Debugging Suite
 
-每个版本的详细更改都记录在 [CHANGELOG.md](CHANGELOG.md) 中。  
-Detailed changes for each version are documented in [CHANGELOG.md](CHANGELOG.md).
+- **Debug blockArea**: Real-time bounding box outline rendering (cyan for subtract, red for normal).
+- **Show blockArea debug text**: Live HUD telemetry for active status, local dimensions, anchor coordinates, and rotation degrees.
+- **Show anchor point**: Visualizes judge line and block area anchor pivots.
+- **English UI Translation**: All menus, settings, toasts, and error dialogues fully localized into English.
 
-## 声明 | Disclaimer
+---
 
-本项目源码由 [lchz&#104;3473](https://github.com/lchz&#104;3473) 独立编写，与游戏本体无关；  
-This project’s source code is independently developed by [lchz&#104;3473](https://github.com/lchz&#104;3473) and is not associated with the original game.
+## Getting Started
 
-因使用或修改代码造成的一切后果由您自行承担。  
-You are solely responsible for any consequences arising from the use or modification of the code.
+### Prerequisites
 
-不提供游戏安装包及逆向工具/教程，也不提供谱面下载。  
-This project does not provide game installation packages, reverse engineering tools or tutorials, nor chart downloads.
+- [Node.js](https://nodejs.org/) (v18 or higher recommended)
+- `npm`
 
-**本仓库及其所有者与 Pigeon Games 及其关联公司无关，且未获得其任何赞助或授权。**  
-**This repository and its owner are not affiliated with, sponsored by, or authorized by Pigeon Games or its affiliates.**
+### Installation & Development
 
-## 许可证 | License
+1. Clone the repository:
 
-本项目源码按 [GPL-3.0](LICENSE.txt) 协议开源；不鼓励、不支持一切商业用途。  
-This project’s source code is open-source under the [GPL-3.0](LICENSE.txt) license.  
-Commercial use is neither encouraged nor supported.
+   ```bash
+   git clone https://github.com/Mishiranuuuuu/sim-phi.git
+   cd sim-phi
+   ```
 
-## 联系 | Contact
+2. Install dependencies:
 
-如有任何疑问，欢迎通过 [GitHub Issue](../../issues) 提交问题，或[直接联系 lchz&#104;](mailto:lchz%683%3473@163.com?subject=[GitHub]lchz%683%3473/sim-phi)。  
-If you have any questions, feel free to [submit an issue on GitHub](../../issues), or [contact lchz&#104;](mailto:lchz%683%3473@163.com?subject=[GitHub]lchz%683%3473/sim-phi).
+   ```bash
+   npm install
+   ```
 
-Copyright &copy; 2020-present, lchz&#104;3473
+3. Start local development server:
+
+   ```bash
+   npm run dev
+   ```
+
+   Open `http://localhost:5173/` in your browser.
+
+4. Build for production:
+
+   ```bash
+   npm run build
+   ```
+
+   Production bundle is compiled into the `dist/` directory.
+
+---
+
+## How to Play
+
+1. **Load a Chart**:
+   - Drag and drop a Phigros chart zip file into the upload zone, or click **Upload** to select individual chart (`.json` / `.csv`), music (`.mp3` / `.ogg`), and illustration (`.png` / `.jpg`) files.
+2. **Configure Parameters**:
+   - Adjust aspect ratio, note scale, background dim, audio offset, and mirror options directly from the top panel.
+3. **Controls during playback**:
+   - **Double-click top-left**: Pause / Resume.
+   - **Double-click top-right**: Restart.
+   - **Double-click bottom-right**: Toggle Fullscreen.
+
+---
+
+## Credits & Acknowledgements
+
+- **Original Project**: [lchzh3473/sim-phi](https://github.com/lchzh3473/sim-phi) by [lchzh3473](https://github.com/lchzh3473).
+- **Noise Shader & Asset Inspiration**: [Phira](https://github.com/TeamFlos/phira) & [Phira-Pro](https://github.com/Phira-Pro/Phira-Pro).
+- **Fonts**:
+  - [Saira](https://github.com/Omnibus-Type/Saira) by Omnibus-Type (SIL Open Font License).
+  - [Noto Sans SC](https://fonts.google.com/noto/specimen/Noto+Sans+SC) by Google.
+
+---
+
+## Disclaimer & License
+
+- This project is a non-commercial, personal-interest fan simulator intended for learning and testing purposes only.
+- This project and its contributors are **not affiliated with, endorsed by, or sponsored by Pigeon Games**.
+- This repository does not distribute proprietary game assets, official music, or copyrighted charts.
+- Open-sourced under the **[GNU General Public License v3.0 (GPL-3.0)](LICENSE.txt)**.
