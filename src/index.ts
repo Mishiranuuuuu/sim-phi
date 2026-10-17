@@ -393,6 +393,8 @@ const uploader = new FileEmitter();
         selectchart.dispatchEvent(new Event('change'));
         break;
       }
+      case 'extra':
+        break;
       case 'unknown': // fallthrough
       default:
         console.warn(`Unsupported file: ${data.pathname}`);
@@ -425,6 +427,22 @@ const isBeta = String(meta[1][3]).startsWith('b');
 const resLink = './pack.json';
 // const resLink = 'local/ptres.json';
 import('@/plugins/demo/index.js').then(a => a.default(isBeta));
+const demoParam = new URLSearchParams(location.search).get('demo');
+if (demoParam === 'rpe') {
+  fetch('/rpe_demo_chart.zip')
+    .then(res => res.arrayBuffer())
+    .then(buf => {
+      uploader.fireLoad({ name: 'rpe_demo_chart.zip' } as any, buf);
+    })
+    .catch(err => console.error(err));
+} else if (demoParam === 'deinos') {
+  fetch(encodeURI('/DEINOS PHAINEIN(紫噪域).pez'))
+    .then(res => res.arrayBuffer())
+    .then(buf => {
+      uploader.fireLoad({ name: 'DEINOS PHAINEIN(紫噪域).pez' } as any, buf);
+    })
+    .catch(err => console.error(err));
+}
 // Hit start
 const hitManager = new HitManager();
 const exitFull = () => {
@@ -785,16 +803,17 @@ const hitFeedbackList = new HitEvents({ //   存放点击特效
 });
 const interact = new InteractProxy(canvas);
 
-function blockAreaContains(blockArea: any, p: { x: number; y: number }, inset: number): boolean {
+function blockAreaContains(blockArea: any, p: { x: number; y: number }, inset: number, aspect = 16 / 9): boolean {
   const center = blockArea.chartCenter;
   const size = blockArea.chartSize;
   if (!center || !size) return false;
-  const rotRad = (blockArea.chartRotation || 0) * Math.PI / 180;
+  const rotRad = -(blockArea.chartRotation || 0) * Math.PI / 180;
   const c = Math.cos(rotRad);
   const s = Math.sin(rotRad);
 
+  const yScale = blockArea.rpeCanvas ? 1.5 / aspect : 1.0;
   const dx = p.x - center.x;
-  const dy = p.y - center.y;
+  const dy = (p.y - center.y) / yScale;
   const localX = c * dx + s * dy;
   const localY = -s * dx + c * dy;
 
@@ -803,13 +822,39 @@ function blockAreaContains(blockArea: any, p: { x: number; y: number }, inset: n
   if (halfX <= 0 || halfY <= 0) return false;
 
   const sign = blockArea.isSubtract ? 1 : -1;
-  const insetX = Math.min(inset * 0.5, halfX * 0.25);
-  const insetY = Math.min(inset * 0.5, halfY * 0.25);
+  const denomX = Math.hypot(c, s * yScale) || 1;
+  const denomY = Math.hypot(s, c * yScale) || 1;
+  const insetX = Math.min(inset / denomX, halfX * 0.5);
+  const insetY = Math.min(inset / denomY, halfY * 0.5);
 
   const boundX = halfX + sign * insetX;
   const boundY = halfY + sign * insetY;
 
   return Math.abs(localX) <= boundX && Math.abs(localY) <= boundY;
+}
+
+function isBlockAreaActive(blockArea: any, time: number): boolean {
+  if (blockArea.rpeArea?.getPhase) {
+    return blockArea.rpeArea.getPhase(time) === 2;
+  }
+  if (blockArea.activeIntervals && blockArea.activeIntervals.length > 0) {
+    return blockArea.activeIntervals.some((inv: any) => time >= inv.start && time < inv.end);
+  }
+  return time >= blockArea.enableTime && time < blockArea.disableTime;
+}
+
+function isBlockAreaReady(blockArea: any, time: number): boolean {
+  if (blockArea.rpeArea?.getPhase) {
+    return blockArea.rpeArea.getPhase(time) === 1;
+  }
+  if (blockArea.activeIntervals && blockArea.activeIntervals.length > 0) {
+    return blockArea.activeIntervals.some((inv: any) => {
+      const flash = inv.readyFlash ?? 0.5;
+      return flash > 0 && time >= inv.start - flash && time < inv.start;
+    });
+  }
+  const timeToActive = blockArea.enableTime - time;
+  return timeToActive > 0 && timeToActive <= 1.0;
 }
 
 function checkNoiseField(x: number, y: number) {
@@ -832,21 +877,22 @@ function checkNoiseField(x: number, y: number) {
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || blockArea.isSubtract === undefined) continue;
-    const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
-    if (!isActive) continue;
+    if (!isBlockAreaActive(blockArea, timeChart)) continue;
 
-    if (blockAreaContains(blockArea, p, 0)) {
+    if (blockAreaContains(blockArea, p, 0, aspect)) {
       if (blockArea.isSubtract) origSub++;
       else origNon = true;
     }
-    if (blockAreaContains(blockArea, p, touchInset)) {
+    if (blockAreaContains(blockArea, p, touchInset, aspect)) {
       if (blockArea.isSubtract) insSub++;
       else insNon = true;
     }
   }
 
-  const origBlocked = origNon !== (origSub % 2 === 1);
-  const insBlocked = insNon !== (insSub % 2 === 1);
+  const ignoreTriple = !!app.chart?.ignoreTripleInversion;
+  const isSubActive = (count: number) => (ignoreTriple ? count === 1 : count % 2 === 1);
+  const origBlocked = origNon !== isSubActive(origSub);
+  const insBlocked = insNon !== isSubActive(insSub);
   return origBlocked && insBlocked;
 }
 
@@ -1356,7 +1402,7 @@ function loopCanvas() {
         if (!blockArea.visible) continue;
 
         if (debugBlockAreaText.checked) {
-          const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
+          const isActive = isBlockAreaActive(blockArea, timeChart);
           debugTexts.push(`[Visible] BA${i}: active=${isActive}, isSub=${blockArea.isSubtract}, pos=(${blockArea.centerX.toFixed(1)}, ${blockArea.centerY.toFixed(1)}), size=(${blockArea.width.toFixed(1)}, ${blockArea.height.toFixed(1)}), scale=(${blockArea.scaleX.toFixed(2)}, ${blockArea.scaleY.toFixed(2)}), rot=${blockArea.chartRotation.toFixed(1)}°`);
         }
 
@@ -1488,6 +1534,7 @@ function loopCanvas() {
 function drawLine(bool: number, lineScale: number) {
   const tw = 1 - tween.easeOutSine(timeOut.second * 1.5);
   for (const line of app.linesReversed) {
+    if ((line as any).isBlockMarker) continue;
     if (bool ^ Number(line.imageD) && timeOut.second < 0.67) {
       ctxfg.globalAlpha = line.alpha;
       ctxfg.setTransform(line.cosr * tw, line.sinr, -line.sinr * tw, line.cosr, app.wlen + (line.offsetX - app.wlen) * tw, line.offsetY); // Hiahiah
@@ -1664,9 +1711,8 @@ function drawOurOwnBlockAreas() {
   }
 
   function drawField(ctx: CanvasRenderingContext2D, blockArea: any) {
-    const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
-    const timeToActive = blockArea.enableTime - timeChart;
-    const isPulsing = timeToActive > 0 && timeToActive <= 1.0;
+    const isActive = isBlockAreaActive(blockArea, timeChart);
+    const isPulsing = !isActive && isBlockAreaReady(blockArea, timeChart);
     const fadesIn = blockArea.appearTime < blockArea.enableTime;
     const opacity = (!isActive && fadesIn)
       ? Math.max(0, Math.min(1, (timeChart - blockArea.appearTime) / 0.5))
@@ -1716,14 +1762,14 @@ function drawOurOwnBlockAreas() {
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || blockArea.isSubtract) continue;
-    const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
+    const isActive = isBlockAreaActive(blockArea, timeChart);
     if (!isActive) drawField(ourNormalFieldCtx!, blockArea);
     drawMask(ourNormalFieldMaskCtx!, blockArea);
   }
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || blockArea.isSubtract) continue;
-    const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
+    const isActive = isBlockAreaActive(blockArea, timeChart);
     if (isActive) drawField(ourNormalFieldCtx!, blockArea);
   }
 
@@ -1731,14 +1777,14 @@ function drawOurOwnBlockAreas() {
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || !blockArea.isSubtract) continue;
-    const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
+    const isActive = isBlockAreaActive(blockArea, timeChart);
     if (!isActive) drawField(ourSubtractFieldCtx!, blockArea);
     drawMask(ourSubtractFieldMaskCtx!, blockArea);
   }
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || !blockArea.isSubtract) continue;
-    const isActive = timeChart >= blockArea.enableTime && timeChart < blockArea.disableTime;
+    const isActive = isBlockAreaActive(blockArea, timeChart);
     if (isActive) drawField(ourSubtractFieldCtx!, blockArea);
   }
 

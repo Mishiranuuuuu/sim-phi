@@ -9,9 +9,23 @@ export function zoneFromArea(area: any, time: number, aspect: number): Zone | nu
   const halfY = Math.abs(trSize.y) * 0.5;
   if (halfX <= 0 || halfY <= 0) return null;
 
-  const active = time >= area.enableTime && time < area.disableTime;
-  const ready = !active && time >= area.enableTime - 0.5 && time < area.enableTime;
-  const angle = (area.chartRotation || 0) * Math.PI / 180;
+  let active = false;
+  let ready = false;
+  if (area.rpeArea?.getPhase) {
+    const phase = area.rpeArea.getPhase(time);
+    active = phase === 2;
+    ready = phase === 1;
+  } else {
+    active = area.activeIntervals && area.activeIntervals.length > 0
+      ? area.activeIntervals.some((i: any) => time >= i.start && time < i.end)
+      : time >= area.enableTime && time < area.disableTime;
+    ready = !active && (
+      area.activeIntervals && area.activeIntervals.length > 0
+        ? area.activeIntervals.some((i: any) => (i.readyFlash ?? 0.5) > 0 && time >= i.start - (i.readyFlash ?? 0.5) && time < i.start)
+        : time >= area.enableTime - 0.5 && time < area.enableTime
+    );
+  }
+  const angle = -(area.chartRotation || 0) * Math.PI / 180;
   const fadesIn = area.appearTime < area.enableTime;
   const opacity = (!area.rpeCanvas && !active && fadesIn)
     ? Math.max(0, Math.min(1, (time - area.appearTime) / 0.5))

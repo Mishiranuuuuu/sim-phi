@@ -58,9 +58,17 @@ export class BlockArea {
   public rotateEvents: BlockAreaRotateEvent[];
   public moveEvents: BlockAreaMoveEvent[];
   public scaleEvents: BlockAreaScaleEvent[];
+  public rpeCanvas?: boolean;
+  public rpeArea?: any;
+  public lineIndex?: number;
+  public activeIntervals?: { start: number; end: number; readyFlash: number }[];
   public rawKeys: string;
   public constructor(area: Record<string, unknown>) {
     this.rawKeys = Object.keys(area).join(', ');
+    if (area.rpeCanvas) this.rpeCanvas = true;
+    if (area.rpeArea) this.rpeArea = area.rpeArea;
+    if (area.lineIndex != null) this.lineIndex = Number(area.lineIndex);
+    if (area.activeIntervals) this.activeIntervals = area.activeIntervals as any;
     this.topRightPercentage = Type.obj(area.topRightPercentage, Vec2);
     this.bottomLeftPercentage = Type.obj(area.bottomLeftPercentage, Vec2);
     this.appearTime = Type.float(area.appearTime);
@@ -126,6 +134,7 @@ export class JudgeLine {
   public judgeLineDisappearEvents: JudgeLineEvent[];
   public judgeLineMoveEvents: JudgeLineEvent[];
   public judgeLineRotateEvents: JudgeLineEvent[];
+  public isBlockMarker?: boolean;
   public constructor(line: Record<string, unknown>) {
     this.numOfNotes = Type.int(line.numOfNotes);
     this.numOfNotesAbove = Type.int(line.numOfNotesAbove);
@@ -140,6 +149,7 @@ export class JudgeLine {
     this.judgeLineDisappearEvents = Type.arr(line.judgeLineDisappearEvents, JudgeLineEvent);
     this.judgeLineMoveEvents = Type.arr(line.judgeLineMoveEvents, JudgeLineEvent);
     this.judgeLineRotateEvents = Type.arr(line.judgeLineRotateEvents, JudgeLineEvent);
+    if (line.isBlockMarker) this.isBlockMarker = true;
   }
 }
 export class Chart {
@@ -148,6 +158,7 @@ export class Chart {
   public numOfNotes: number;
   public judgeLineList: JudgeLine[];
   public blockAreaList: BlockArea[];
+  public ignoreTripleInversion?: boolean;
   public constructor(input?: Record<string, unknown>) {
     const chart = input || {};
     this.formatVersion = Type.int(chart.formatVersion);
@@ -155,6 +166,7 @@ export class Chart {
     this.numOfNotes = Type.int(chart.numOfNotes);
     this.judgeLineList = Type.arr(chart.judgeLineList, JudgeLine);
     this.blockAreaList = Type.arr(chart.blockAreaList, BlockArea);
+    if (chart.ignoreTripleInversion) this.ignoreTripleInversion = true;
     if (chart.numOfNotes == null) this.numOfNotes = this.judgeLineList.reduce((a, b) => a + b.numOfNotes, 0);
   }
   public duplicate(): Chart {
@@ -206,8 +218,7 @@ export function structChart(chart: ChartPGS, filename: string): ChartData {
     const subErrors = [];
     if (line.bpm > 0) {
       const maxNoteTime = Math.ceil(maxNoteSeconds * line.bpm / 1.875);
-      type KeyOfType<T, U> = { [K in keyof T]: T[K] extends U ? K : never }[keyof T];
-      type KeyOfJudgeLine = KeyOfType<JudgeLine, (JudgeLineEvent | SpeedEvent)[]>;
+      type KeyOfJudgeLine = 'speedEvents' | 'judgeLineDisappearEvents' | 'judgeLineMoveEvents' | 'judgeLineRotateEvents';
       const checkMaxEventTime = (key: KeyOfJudgeLine) => {
         if (line[key].length) {
           let maxEndTime = 0;

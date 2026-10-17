@@ -121,7 +121,11 @@ interface UnknownReaderData extends ReaderData2 {
   type: 'unknown';
   data: unknown;
 }
-type ReaderData = ChartInfoReaderData | ChartLineReaderData | ChartReaderData | ImageReaderData | MediaReaderData | UnknownReaderData;
+interface ExtraReaderData extends ReaderData2 {
+  type: 'extra';
+  data: unknown;
+}
+type ReaderData = ChartInfoReaderData | ChartLineReaderData | ChartReaderData | ImageReaderData | MediaReaderData | UnknownReaderData | ExtraReaderData;
 interface ByteData {
   /*  * 包含相对路径和文件名   */
   pathname: string;

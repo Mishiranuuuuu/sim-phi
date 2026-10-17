@@ -13,6 +13,7 @@ interface ChartPGS {
   numOfNotes?: number;
   judgeLineList: JudgeLinePGS[];
   blockAreaList?: BlockAreaPGS[];
+  ignoreTripleInversion?: boolean;
 }
 interface BlockAreaPGS {
   topRightPercentage: { x: number; y: number };
@@ -25,6 +26,10 @@ interface BlockAreaPGS {
   rotateEvents: { anchor: { x: number; y: number }; time: number; easeType: number; rotation: number }[];
   moveEvents: { endPosition: { x: number; y: number }; time: number; easeTypeX: number; easeTypeY: number }[];
   scaleEvents: { anchor: { x: number; y: number }; time: number; easeTypeX: number; easeTypeY: number; scale: { x: number; y: number } }[];
+  lineIndex?: number;
+  rpeCanvas?: boolean;
+  rpeArea?: any;
+  activeIntervals?: any[];
 }
 interface NotePGS {
   type: number;
@@ -45,6 +50,7 @@ interface JudgeLinePGS {
   judgeLineDisappearEvents: JudgeLineEventPGS[];
   judgeLineMoveEvents: JudgeLineEventPGS[];
   judgeLineRotateEvents: JudgeLineEventPGS[];
+  isBlockMarker?: boolean;
 }
 interface SpeedEventPGS {
   startTime: number;

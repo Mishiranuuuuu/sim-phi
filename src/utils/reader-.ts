@@ -1,8 +1,4 @@
-const PEC = {
-  parseRPE: (text: string, _path: string, _name: string) => ({ data: JSON.parse(text), messages: [], info: {}, line: [], format: 'RPE' }),
-  parse: (text: string, _path: string) => ({ data: JSON.parse(text), messages: [], format: 'PEC' }),
-  readInfo: (_text: string) => ([] as Record<string, string | null>[])
-};
+import PEC from '../extends/pec/index';
 import { reader, splitPath } from './reader';
 import { structChart } from './Chart';
 import { structInfoData, structLineData } from './structInfo';
@@ -10,9 +6,15 @@ import md5 from 'md5';
 reader.use({
   pattern: /\.(json|pec)$/i,
   type: 'json',
+  weight: 10,
   read(i: ByteData): ChartReaderData {
-    const { name, path } = splitPath(i.pathname);
-    const rpeData = PEC.parseRPE(i.text!, i.pathname, name);
+    const { path } = splitPath(i.pathname);
+    const raw = JSON.parse(i.text!);
+    if (raw.formatVersion != null) {
+      const { data, messages } = structChart(raw, i.pathname);
+      return { pathname: i.pathname, type: 'chart', md5: md5(i.text!), data, msg: messages, info: structInfoData([], path), line: [], format: `PGS(${raw.formatVersion})` };
+    }
+    const rpeData = PEC.parseRPE(i.text!, i.pathname);
     const { data, messages } = structChart(rpeData.data, i.pathname);
     const info = structInfoData([rpeData.info], path);
     const line = structLineData(rpeData.line, path);
@@ -41,6 +43,15 @@ reader.use({
     const data = i.text!;
     const chartInfo = structInfoData(PEC.readInfo(data), path);
     return { pathname: i.pathname, type: 'info', data: chartInfo };
+  }
+});
+reader.use({
+  pattern: /^extra\.json$/i,
+  type: 'text',
+  mustMatch: true,
+  weight: 20,
+  read(i: ByteData): ExtraReaderData {
+    return { pathname: i.pathname, type: 'extra', data: i.text };
   }
 });
 if (Object.hasOwn(self, 'webp')) {

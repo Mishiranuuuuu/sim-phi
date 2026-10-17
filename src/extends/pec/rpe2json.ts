@@ -3,6 +3,7 @@
 import { type BeatArray, BpmList } from './BpmList';
 import { easing } from './easing.js';
 import { cubicBezier } from './cubicBezier.js';
+import { parseBlockAreaList, parseLine2Area, parseNoiseAreaOptions } from '../../utils/rpeBlock';
 interface BpmEventRPE {
   startTime: BeatArray;
   bpm: number;
@@ -380,7 +381,8 @@ class LineRPE1 {
       notesBelow: [] as NotePGS[],
       judgeLineDisappearEvents: [] as JudgeLineEventPGS[],
       judgeLineMoveEvents: [] as JudgeLineEventPGS[],
-      judgeLineRotateEvents: [] as JudgeLineEventPGS[]
+      judgeLineRotateEvents: [] as JudgeLineEventPGS[],
+      isBlockMarker: false
     };
     for (const i of this.moveEvents!) {
       result.judgeLineMoveEvents.push({
@@ -392,6 +394,40 @@ class LineRPE1 {
         end2: (i.end2 + 450) / 900
       });
     }
+    if (result.judgeLineMoveEvents.length === 0) {
+      result.judgeLineMoveEvents.push({
+        startTime: 0,
+        endTime: 1e9,
+        start: 0.5,
+        end: 0.5,
+        start2: 0.5,
+        end2: 0.5
+      });
+    } else {
+      const first = result.judgeLineMoveEvents[0];
+      if (first.startTime > 0) {
+        result.judgeLineMoveEvents.unshift({
+          startTime: 0,
+          endTime: first.startTime,
+          start: first.start,
+          end: first.start,
+          start2: first.start2,
+          end2: first.start2
+        });
+      }
+      const last = result.judgeLineMoveEvents[result.judgeLineMoveEvents.length - 1];
+      if (last.endTime < 1e9) {
+        result.judgeLineMoveEvents.push({
+          startTime: last.endTime,
+          endTime: 1e9,
+          start: last.end,
+          end: last.end,
+          start2: last.end2,
+          end2: last.end2
+        });
+      }
+    }
+
     for (const i of this.rotateEvents!) {
       result.judgeLineRotateEvents.push({
         startTime: i.startTime,
@@ -402,6 +438,40 @@ class LineRPE1 {
         end2: 0
       });
     }
+    if (result.judgeLineRotateEvents.length === 0) {
+      result.judgeLineRotateEvents.push({
+        startTime: 0,
+        endTime: 1e9,
+        start: 0,
+        end: 0,
+        start2: 0,
+        end2: 0
+      });
+    } else {
+      const first = result.judgeLineRotateEvents[0];
+      if (first.startTime > 0) {
+        result.judgeLineRotateEvents.unshift({
+          startTime: 0,
+          endTime: first.startTime,
+          start: first.start,
+          end: first.start,
+          start2: 0,
+          end2: 0
+        });
+      }
+      const last = result.judgeLineRotateEvents[result.judgeLineRotateEvents.length - 1];
+      if (last.endTime < 1e9) {
+        result.judgeLineRotateEvents.push({
+          startTime: last.endTime,
+          endTime: 1e9,
+          start: last.end,
+          end: last.end,
+          start2: 0,
+          end2: 0
+        });
+      }
+    }
+
     for (const i of this.alphaEvents!) {
       result.judgeLineDisappearEvents.push({
         startTime: i.startTime,
@@ -412,6 +482,40 @@ class LineRPE1 {
         end2: 0
       });
     }
+    if (result.judgeLineDisappearEvents.length === 0) {
+      result.judgeLineDisappearEvents.push({
+        startTime: 0,
+        endTime: 1e9,
+        start: 1,
+        end: 1,
+        start2: 0,
+        end2: 0
+      });
+    } else {
+      const first = result.judgeLineDisappearEvents[0];
+      if (first.startTime > 0) {
+        result.judgeLineDisappearEvents.unshift({
+          startTime: 0,
+          endTime: first.startTime,
+          start: first.start,
+          end: first.start,
+          start2: 0,
+          end2: 0
+        });
+      }
+      const last = result.judgeLineDisappearEvents[result.judgeLineDisappearEvents.length - 1];
+      if (last.endTime < 1e9) {
+        result.judgeLineDisappearEvents.push({
+          startTime: last.endTime,
+          endTime: 1e9,
+          start: last.end,
+          end: last.end,
+          start2: 0,
+          end2: 0
+        });
+      }
+    }
+
     // 添加floorPosition
     let floorPos = 0;
     let minPos = 0;
@@ -424,6 +528,14 @@ class LineRPE1 {
       floorPos += (endTime - startTime) * value / this.bpm * 1.875;
       floorPos = Math.fround(floorPos);
       minPos = Math.min(minPos, floorPos);
+    }
+    if (result.speedEvents.length === 0) {
+      result.speedEvents.push({ startTime: 0, endTime: 1e9, value: 1, floorPosition: 0, floorPositionMin: 0 });
+    } else {
+      const first = result.speedEvents[0];
+      if (first.startTime > 0) {
+        result.speedEvents.unshift({ startTime: 0, endTime: first.startTime, value: first.value, floorPosition: 0, floorPositionMin: 0 });
+      }
     }
     // 处理notes
     const sortFn = (a: { time: number }, b: { time: number }) => a.time - b.time;
@@ -531,8 +643,9 @@ export function parse(pec: string, filename: string): {
   warn(0, 'RPEVersionNotice', `RPE谱面兼容建设中...\n检测到RPE版本:${meta.RPEVersion}`);
   const format = `RPE(${meta.RPEVersion})`;
   // 谱面信息
+  const chartName = filename.slice(filename.lastIndexOf('/') + 1);
   const info: Record<string, string> = {};
-  info.Chart = filename;
+  info.Chart = chartName;
   info.Music = meta.song;
   info.Image = meta.background;
   info.Name = meta.name;
@@ -550,7 +663,7 @@ export function parse(pec: string, filename: string): {
     const scaleX = extended?.scaleXEvents ? extended.scaleXEvents[extended.scaleXEvents.length - 1].end : 1;
     const scaleY = extended?.scaleYEvents ? extended.scaleYEvents[extended.scaleYEvents.length - 1].end : 1;
     line.push({
-      Chart: filename,
+      Chart: chartName,
       LineId: index.toString(),
       Image: texture,
       Scale: scaleY.toString(),
@@ -638,12 +751,26 @@ export function parse(pec: string, filename: string): {
     const father = data.judgeLineList[i.father];
     lineRPE.setFather(father?.judgeLineRPE);
   }
-  for (const i of data.judgeLineList) {
-    const lineRPE = i.judgeLineRPE; // TODO: 待优化
+  for (let i = 0; i < data.judgeLineList.length; i++) {
+    const rawLine = data.judgeLineList[i];
+    const lineRPE = rawLine.judgeLineRPE; // TODO: 待优化
     const judgeLine = lineRPE.format({ onwarning: (msg: string) => warn(1, 'OtherWarning', `${msg}`) });
+    const texture = String(rawLine.Texture).replace(/\0/g, '');
+    const isMarker = /isSubtract[01]\.(png|jpg|jpeg|webp)$/i.test(texture);
+    if (isMarker) {
+      judgeLine.isBlockMarker = true;
+    }
     result.judgeLineList.push(judgeLine);
     result.numOfNotes! += judgeLine.numOfNotes;
   }
+  result.blockAreaList = [];
+  if (Array.isArray((data as any).blockAreaList)) {
+    const { nextBlocks, nativeBlocks } = parseBlockAreaList((data as any).blockAreaList, data.BPMList as any);
+    result.blockAreaList.push(...nextBlocks, ...nativeBlocks);
+  }
+  const line2areaBlocks = parseLine2Area(data.judgeLineList, data.BPMList as any, result.judgeLineList);
+  result.blockAreaList.push(...line2areaBlocks);
+  result.ignoreTripleInversion = parseNoiseAreaOptions(data).ignoreTripleInversion;
   return { data: result, messages: warnings, info, line, format };
   function getWarning(code: EasingCode, le: LineEventRPE) {
     if (code === EasingCode.TypeNotSupported) warn(1, 'EasingTypeWarning', `未知的缓动类型:${le.easingType}(将被视为1)\n位于:"${JSON.stringify(le)}"`);

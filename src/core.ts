@@ -165,7 +165,17 @@ function rotateCenter(
   };
 }
 
-function computeBlockAreaTransform(blockArea: BlockAreaExtends, time: number, aspect: number) {
+function computeBlockAreaTransform(
+  blockArea: BlockAreaExtends,
+  time: number,
+  aspect: number,
+  line?: any,
+  canvasWidth = 1350,
+  canvasHeight = 900
+) {
+  if (blockArea.rpeArea?.computeTransform) {
+    return blockArea.rpeArea.computeTransform(time, aspect, line, canvasWidth, canvasHeight);
+  }
   const bl = pctToChart(blockArea.bottomLeftPercentage, aspect);
   const tr = pctToChart(blockArea.topRightPercentage, aspect);
   const baseSize = { x: tr.x - bl.x, y: tr.y - bl.y };
@@ -720,15 +730,20 @@ export class Renderer {
     const H = this.canvasfg.height;
     const aspect = H > 0 ? W / H : 1;
     for (const blockArea of this.blockAreas) {
-      blockArea.visible = time >= blockArea.appearTime && time < blockArea.disappearTime;
+      if (blockArea.rpeArea?.isVisible) {
+        blockArea.visible = blockArea.rpeArea.isVisible(time);
+      } else {
+        blockArea.visible = time >= blockArea.appearTime && time < blockArea.disappearTime;
+      }
       if (!blockArea.visible) continue;
 
-      const tr = computeBlockAreaTransform(blockArea, time, aspect);
+      const line = blockArea.lineIndex != null ? this.lines[blockArea.lineIndex] : undefined;
+      const tr = computeBlockAreaTransform(blockArea, time, aspect, line, W, H);
       const canvasPos = chartToCanvas(tr.center, aspect, W, H);
       blockArea.centerX = canvasPos.x;
       blockArea.centerY = canvasPos.y;
       blockArea.width = tr.size.x * 0.5 * W;
-      blockArea.height = tr.size.y * 0.5 * W;
+      blockArea.height = tr.size.y * (blockArea.rpeCanvas ? 1.5 / aspect : 1.0) * 0.5 * W;
       blockArea.scaleX = tr.scale.x;
       blockArea.scaleY = tr.scale.y;
       blockArea.rotation = -tr.rotation * Math.PI / 180;

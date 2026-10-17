@@ -142,6 +142,7 @@ const readerInits: ReaderInit[] = [
     read(i: ByteData): ChartReaderData {
       const text = i.text!;
       const json = JSON.parse(text, (_, value) => typeof value === 'number' ? Math.fround(value) : value as unknown) as ChartPGS;
+      if (json.formatVersion == null) throw new Error('Not a PGS chart (formatVersion missing)');
       const { data: jsonData, messages } = structChart(json, i.pathname);
       const format = `PGS(${jsonData.formatVersion})`;
       return { pathname: i.pathname, type: 'chart', md5: md5(text), data: jsonData, msg: messages, format };
