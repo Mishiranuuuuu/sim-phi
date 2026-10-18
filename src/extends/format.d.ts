@@ -14,6 +14,8 @@ interface ChartPGS {
   judgeLineList: JudgeLinePGS[];
   blockAreaList?: BlockAreaPGS[];
   ignoreTripleInversion?: boolean;
+  attachUIList?: Partial<Record<import('@/utils/Chart').UIElementName, number>>;
+  bpmList?: any[];
 }
 interface BlockAreaPGS {
   topRightPercentage: { x: number; y: number };
@@ -38,6 +40,7 @@ interface NotePGS {
   holdTime: number;
   speed: number;
   floorPosition: number;
+  isFake?: boolean;
 }
 interface JudgeLinePGS {
   bpm: number;
@@ -51,6 +54,13 @@ interface JudgeLinePGS {
   judgeLineMoveEvents: JudgeLineEventPGS[];
   judgeLineRotateEvents: JudgeLineEventPGS[];
   isBlockMarker?: boolean;
+  attachUI?: import('@/utils/Chart').UIElementName;
+  scaleXEvents?: any[];
+  scaleYEvents?: any[];
+  colorEvents?: any[];
+  textEvents?: any[];
+  anchor?: [number, number];
+  zOrder?: number;
 }
 interface SpeedEventPGS {
   startTime: number;

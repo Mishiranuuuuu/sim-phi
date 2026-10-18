@@ -125,7 +125,11 @@ interface ExtraReaderData extends ReaderData2 {
   type: 'extra';
   data: unknown;
 }
-type ReaderData = ChartInfoReaderData | ChartLineReaderData | ChartReaderData | ImageReaderData | MediaReaderData | UnknownReaderData | ExtraReaderData;
+interface ShaderReaderData extends ReaderData2 {
+  type: 'shader';
+  data: string;
+}
+type ReaderData = ChartInfoReaderData | ChartLineReaderData | ChartReaderData | ImageReaderData | MediaReaderData | UnknownReaderData | ExtraReaderData | ShaderReaderData;
 interface ByteData {
   /*  * 包含相对路径和文件名   */
   pathname: string;

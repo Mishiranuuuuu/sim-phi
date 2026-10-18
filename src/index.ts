@@ -20,6 +20,8 @@ import { MessageHandler } from '@/components/MessageHandler';
 import { AudioController } from '@/utils/AudioTools';
 import { LevelInfoHandler } from '@/components/InfoHandler';
 import { NoiseShaderRenderer, TouchPoint } from '@/utils/NoiseShader';
+import { UIElementName } from '@/utils/Chart';
+import { effectManager } from '@/utils/EffectManager';
 const meta = ['Phi\x67ros Simulator', version.split('.'), pubdate, lastupdate] as typeof self._i;
 self._i = meta;
 const FONT_FAMILY = 'Saira,Custom,Noto Sans SC';
@@ -80,7 +82,6 @@ const tween = {
   easeOutSine: (t: number) => Math.sin(t * Math.PI / 2),
   easeOutCubic: (t: number) => 1 + (t - 1) ** 3
 };
-const time2Str = (time = 0) => `${Math.floor(time / 60)}:${`00${Math.floor(time % 60)}`.slice(-2)}`;
 interface MainOptions {
   modify: (chart: Chart) => Chart;
   pressTime: number;
@@ -394,6 +395,10 @@ const uploader = new FileEmitter();
         break;
       }
       case 'extra':
+        effectManager.addExtra(data.pathname, data.data as string);
+        break;
+      case 'shader':
+        effectManager.addShader(data.pathname, data.data as string);
         break;
       case 'unknown': // fallthrough
       default:
@@ -597,6 +602,7 @@ const judgeManager = {
     if (app.playMode === 1) {
       const dispTime = Math.min(frameTimer.disp, 0.04);
       for (const note of notes) {
+        if (note.isFake) continue;
         if (note.scored) continue;
         const deltaTime = note.seconds - seconds;
         if (note.type === 1) {
@@ -621,6 +627,7 @@ const judgeManager = {
   execute(notes: Renderer.Note[], seconds: number, width: number) {
     const { list } = this;
     for (const note of notes) {
+      if (note.isFake) continue;
       if (note.scored) continue; //   跳过已判分的Note
       const deltaTime = note.seconds - seconds;
       if (deltaTime > 0.2) break; //   跳过判定范围外的Note
@@ -1324,6 +1331,85 @@ function loopNoCanvas() {
   tmps.customForeDraw = null;
   tmps.customBackDraw = null;
 }
+let tintCanvas: HTMLCanvasElement | null = null;
+let tintCtx: CanvasRenderingContext2D | null = null;
+function drawTintedImage(
+  ctx: CanvasRenderingContext2D,
+  img: CanvasImageSource | null,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+  g: number,
+  b: number
+) {
+  if (!img) return;
+  if (r === 255 && g === 255 && b === 255) {
+    ctx.drawImage(img, x, y, w, h);
+    return;
+  }
+  const imgW = Number((img as any).width) || 1;
+  const imgH = Number((img as any).height) || 1;
+  if (!tintCanvas) {
+    tintCanvas = document.createElement('canvas');
+    tintCtx = tintCanvas.getContext('2d');
+  }
+  if (!tintCtx) {
+    ctx.drawImage(img, x, y, w, h);
+    return;
+  }
+  tintCanvas.width = imgW;
+  tintCanvas.height = imgH;
+  tintCtx.clearRect(0, 0, imgW, imgH);
+  tintCtx.drawImage(img, 0, 0);
+  tintCtx.globalCompositeOperation = 'multiply';
+  tintCtx.fillStyle = `rgb(${r},${g},${b})`;
+  tintCtx.fillRect(0, 0, imgW, imgH);
+  tintCtx.globalCompositeOperation = 'destination-in';
+  tintCtx.drawImage(img, 0, 0);
+  tintCtx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(tintCanvas, x, y, w, h);
+}
+
+function withAttachedUI(
+  element: UIElementName,
+  pivotX: number,
+  pivotY: number,
+  renderFn: (color: [number, number, number] | undefined, colorStr: string, textVal?: string) => void
+) {
+  ctxfg.resetTransform();
+  const lineIndex = app.chart?.attachUIList?.[element];
+  const line = (lineIndex != null && app.lines[lineIndex]) ? app.lines[lineIndex] : null;
+
+  if (!line) {
+    ctxfg.fillStyle = '#fff';
+    renderFn(undefined, '#fff', undefined);
+    return;
+  }
+
+  const dx = line.offsetX - app.wlen;
+  const dy = line.offsetY - app.hlen;
+  const rot = line.rotation;
+  const scaleX = (line as any).scaleXVal ?? 1;
+  const scaleY = (line as any).scaleYVal ?? 1;
+  const alpha = Math.max(0, Math.min(1, line.alpha));
+  const color = (line as any).colorVal as [number, number, number] | undefined;
+  const colorStr = color ? `rgb(${color[0]},${color[1]},${color[2]})` : '#fff';
+  const textVal = (line as any).textVal as string | undefined;
+
+  ctxfg.save();
+  ctxfg.translate(pivotX + dx, pivotY + dy);
+  ctxfg.rotate(rot);
+  ctxfg.scale(scaleX, scaleY);
+  ctxfg.translate(-pivotX, -pivotY);
+  ctxfg.globalAlpha *= alpha;
+  ctxfg.fillStyle = colorStr;
+
+  renderFn(color, colorStr, textVal);
+
+  ctxfg.restore();
+}
 function loopCanvas() {
   const { lineScale, wlen, hlen } = app;
   const { bgImage, bgVideo } = tmps;
@@ -1438,68 +1524,171 @@ function loopCanvas() {
   // if (awawa) ctxfg.filter = 'none';
   if (showCE2.checked) hitWordList.animate(); //   绘制打击特效2
   ctxfg.globalAlpha = 1;
+  ctxfg.resetTransform();
 
-  //   绘制进度条
-  ctxfg.setTransform(canvasfg.width / 1920, 0, 0, canvasfg.width / 1920, 0, lineScale * (timeIn.second < 0.67 ? tween.easeOutSine(timeIn.second * 1.5) - 1 : -tween.easeOutSine(timeOut.second * 1.5)) * 1.75);
-  ctxfg.drawImage(res.ProgressBar, tmps.progress * 1920 - 1920, 0);
-  //   绘制文字
+  // Apply post-processing shaders (Option B) before HUD elements
+  effectManager.render(canvasfg, ctxfg, timeBgm);
+
+  const topTransY = lineScale * (timeIn.second < 0.67 ? tween.easeOutSine(timeIn.second * 1.5) - 1 : -tween.easeOutSine(timeOut.second * 1.5)) * 1.75;
+  const bottomTransY = lineScale * (timeIn.second < 0.67 ? 1 - tween.easeOutSine(timeIn.second * 1.5) : tween.easeOutSine(timeOut.second * 1.5)) * 1.75;
+
+  // 1. 绘制进度条 (Bar, UIElement 5)
+  const barScale = canvasfg.width / 1920;
+  withAttachedUI('bar', 0, topTransY, (color) => {
+    ctxfg.save();
+    ctxfg.translate(0, topTransY);
+    ctxfg.scale(barScale, barScale);
+    if (color && (color[0] !== 255 || color[1] !== 255 || color[2] !== 255)) {
+      const imgW = Number((res.ProgressBar as any).width) || 1919;
+      const imgH = Number((res.ProgressBar as any).height) || 11;
+      drawTintedImage(
+        ctxfg,
+        res.ProgressBar,
+        tmps.progress * 1920 - 1920,
+        0,
+        imgW,
+        imgH,
+        color[0],
+        color[1],
+        color[2]
+      );
+    } else {
+      ctxfg.drawImage(res.ProgressBar, tmps.progress * 1920 - 1920, 0);
+    }
+    ctxfg.restore();
+  });
+
+  // 绘制文字
   ctxfg.resetTransform();
   for (const callback of main.after.values()) callback();
   ctxfg.fillStyle = '#fff';
-  //   开头过渡动画
+
+  // 开头过渡动画
   if (timeIn.second < 3) {
     if (timeIn.second < 0.67) ctxfg.globalAlpha = tween.easeOutSine(timeIn.second * 1.5);
     else if (timeIn.second >= 2.5) ctxfg.globalAlpha = tween.easeOutSine(6 - timeIn.second * 2);
     ctxfg.textAlign = 'center';
-    //   曲名、曲师、曲绘和谱师
+    // 曲名、曲师、曲绘和谱师
     fillTextNode(tmps.name, wlen, hlen * 0.75, lineScale * 1.1, canvasfg.width - lineScale * 1.5);
     fillTextNode(tmps.artist, wlen, hlen * 0.75 + lineScale * 1.25, lineScale * 0.55, canvasfg.width - lineScale * 1.5);
     fillTextNode(tmps.illustrator, wlen, hlen * 1.25 + lineScale * 0.55, lineScale * 0.55, canvasfg.width - lineScale * 1.5);
     fillTextNode(tmps.charter, wlen, hlen * 1.25 + lineScale * 1.4, lineScale * 0.55, canvasfg.width - lineScale * 1.5);
-    //   判定线(装饰用)
+    // 判定线(装饰用)
     ctxfg.globalAlpha = 1;
     ctxfg.setTransform(1, 0, 0, 1, wlen, hlen);
     const imgW = lineScale * 48 * (timeIn.second < 0.67 ? tween.easeInSine(timeIn.second * 1.5) : 1);
     const imgH = lineScale * 0.15; // 0.1333...
     if (timeIn.second >= 2.5) ctxfg.globalAlpha = tween.easeOutSine(6 - timeIn.second * 2);
     ctxfg.drawImage(lineColor.checked ? res.JudgeLineMP : res.JudgeLine, -imgW / 2, -imgH / 2, imgW, imgH);
+    ctxfg.resetTransform();
   }
-  //   绘制分数和combo
-  ctxfg.globalAlpha = 1;
-  ctxfg.setTransform(1, 0, 0, 1, 0, lineScale * (timeIn.second < 0.67 ? tween.easeOutSine(timeIn.second * 1.5) - 1 : -tween.easeOutSine(timeOut.second * 1.5)) * 1.75);
+
+  // 2. 绘制Pause图标 (Pause, UIElement 1)
+  if (app.chart?.attachUIList?.pause != null) {
+    const pauseX = lineScale * 0.75;
+    const pauseY = lineScale * 1.35;
+    const pw = lineScale * 0.18;
+    const ph = lineScale * 0.6;
+    withAttachedUI('pause', pauseX, pauseY + topTransY, (_color, colorStr) => {
+      ctxfg.save();
+      ctxfg.translate(0, topTransY);
+      ctxfg.fillStyle = colorStr;
+      const px = pauseX - pw * 1.6;
+      const py = pauseY - ph / 2;
+      const radius = pw * 0.25;
+      if (typeof (ctxfg as any).roundRect === 'function') {
+        ctxfg.beginPath();
+        (ctxfg as any).roundRect(px, py, pw, ph, radius);
+        (ctxfg as any).roundRect(px + pw * 2.2, py, pw, ph, radius);
+        ctxfg.fill();
+      } else {
+        ctxfg.fillRect(px, py, pw, ph);
+        ctxfg.fillRect(px + pw * 2.2, py, pw, ph);
+      }
+      ctxfg.restore();
+    });
+  }
+
+  // 3. 绘制分数和combo (Score, UIElement 4)
   if (tmps.showStat) {
-    ctxfg.font = `${lineScale * 0.95}px ${FONT_FAMILY}`;
-    ctxfg.textAlign = 'right';
-    ctxfg.fillText(stat.scoreStr, canvasfg.width - lineScale * 0.65, lineScale * 1.375);
-    if (showAcc.checked) {
-      ctxfg.font = `${lineScale * 0.66}px ${FONT_FAMILY}`;
-      ctxfg.fillText(stat.accStr, canvasfg.width - lineScale * 0.65, lineScale * 2.05);
-    }
+    const scoreX = canvasfg.width - lineScale * 0.65;
+    const scoreY = lineScale * 1.375;
+    withAttachedUI('score', scoreX, scoreY + topTransY, (_color, colorStr, textVal) => {
+      ctxfg.save();
+      ctxfg.translate(0, topTransY);
+      ctxfg.font = `${lineScale * 0.95}px ${FONT_FAMILY}`;
+      ctxfg.textAlign = 'right';
+      ctxfg.fillStyle = colorStr;
+      ctxfg.fillText(textVal || stat.scoreStr, scoreX, scoreY);
+      if (showAcc.checked) {
+        ctxfg.font = `${lineScale * 0.66}px ${FONT_FAMILY}`;
+        ctxfg.fillText(stat.accStr, scoreX, lineScale * 2.05);
+      }
+      ctxfg.restore();
+    });
   }
-  ctxfg.textAlign = 'center';
-  ctxfg.font = `${lineScale * 1.32}px ${FONT_FAMILY}`;
-  ctxfg.fillText(tmps.combo, wlen, lineScale * 1.375);
-  ctxfg.globalAlpha = timeIn.second < 0.67 ? tween.easeOutSine(timeIn.second * 1.5) : 1 - tween.easeOutSine(timeOut.second * 1.5);
-  ctxfg.font = `${lineScale * 0.66}px ${FONT_FAMILY}`;
-  ctxfg.fillText(tmps.combo2, wlen, lineScale * 2.05);
-  //   绘制曲名和等级
-  ctxfg.globalAlpha = 1;
-  ctxfg.setTransform(1, 0, 0, 1, 0, lineScale * (timeIn.second < 0.67 ? 1 - tween.easeOutSine(timeIn.second * 1.5) : tween.easeOutSine(timeOut.second * 1.5)) * 1.75);
-  ctxfg.textAlign = 'right';
-  fillTextNode(tmps.level, canvasfg.width - lineScale * 0.75, canvasfg.height - lineScale * 0.66, lineScale * 0.63, wlen - lineScale);
-  ctxfg.textAlign = 'left';
-  fillTextNode(tmps.name, lineScale * 0.65, canvasfg.height - lineScale * 0.66, lineScale * 0.63, wlen - lineScale);
+
+  // 4. 绘制Combo数字 (ComboNumber, UIElement 2)
+  if (tmps.combo) {
+    const comboNumX = wlen;
+    const comboNumY = lineScale * 1.375;
+    withAttachedUI('comboNumber', comboNumX, comboNumY + topTransY, (_color, colorStr, textVal) => {
+      ctxfg.save();
+      ctxfg.translate(0, topTransY);
+      ctxfg.textAlign = 'center';
+      ctxfg.font = `${lineScale * 1.32}px ${FONT_FAMILY}`;
+      ctxfg.fillStyle = colorStr;
+      ctxfg.fillText(textVal || tmps.combo, comboNumX, comboNumY);
+      ctxfg.restore();
+    });
+  }
+
+  // 5. 绘制Combo文字 (Combo, UIElement 3)
+  if (tmps.combo2) {
+    const comboTextX = wlen;
+    const comboTextY = lineScale * 2.05;
+    withAttachedUI('combo', comboTextX, comboTextY + topTransY, (_color, colorStr, textVal) => {
+      ctxfg.save();
+      ctxfg.translate(0, topTransY);
+      ctxfg.globalAlpha *= timeIn.second < 0.67 ? tween.easeOutSine(timeIn.second * 1.5) : 1 - tween.easeOutSine(timeOut.second * 1.5);
+      ctxfg.textAlign = 'center';
+      ctxfg.font = `${lineScale * 0.66}px ${FONT_FAMILY}`;
+      ctxfg.fillStyle = colorStr;
+      ctxfg.fillText(textVal || tmps.combo2, comboTextX, comboTextY);
+      ctxfg.restore();
+    });
+  }
+
+  // 6. 绘制等级 (Level, UIElement 7)
+  const levelX = canvasfg.width - lineScale * 0.75;
+  const levelY = canvasfg.height - lineScale * 0.66;
+  withAttachedUI('level', levelX, levelY + bottomTransY, (_color, colorStr, textVal) => {
+    ctxfg.save();
+    ctxfg.translate(0, bottomTransY);
+    ctxfg.textAlign = 'right';
+    ctxfg.fillStyle = colorStr;
+    fillTextNode(textVal || tmps.level, levelX, levelY, lineScale * 0.63, wlen - lineScale);
+    ctxfg.restore();
+  });
+
+  // 7. 绘制曲名 (Name, UIElement 6)
+  const nameX = lineScale * 0.65;
+  const nameY = canvasfg.height - lineScale * 0.66;
+  withAttachedUI('name', nameX, nameY + bottomTransY, (_color, colorStr, textVal) => {
+    ctxfg.save();
+    ctxfg.translate(0, bottomTransY);
+    ctxfg.textAlign = 'left';
+    ctxfg.fillStyle = colorStr;
+    fillTextNode(textVal || tmps.name, nameX, nameY, lineScale * 0.63, wlen - lineScale);
+    ctxfg.restore();
+  });
+
   ctxfg.resetTransform();
   //   绘制时间和帧率以及note打击数
   ctxfg.fillStyle = '#fff';
   if (timeIn.second < 0.67) ctxfg.globalAlpha = tween.easeOutSine(timeIn.second * 1.5);
   else ctxfg.globalAlpha = 1 - tween.easeOutSine(timeOut.second * 1.5);
   ctxfg.font = `${lineScale * 0.4}px ${FONT_FAMILY}`;
-  ctxfg.textAlign = 'left';
-  ctxfg.fillText(`${time2Str(main.awawa ? duration0 - timeBgm : timeBgm)}/${time2Str(duration0)}${status2.text}`, lineScale * 0.05, lineScale * 0.6);
-  ctxfg.fillText(stat.format, canvasfg.width - lineScale * 4.35, lineScale * 0.6);
-  ctxfg.textAlign = 'right';
-  ctxfg.fillText(frameTimer.fpsStr, canvasfg.width - lineScale * 0.05, lineScale * 0.6);
   if (tmps.showStat && showStat.checked) {
     ctxfg.textAlign = 'right';
     [stat.noteRank[6], stat.noteRank[7], stat.noteRank[5], stat.noteRank[4], stat.noteRank[1], stat.noteRank[3], stat.noteRank[2]].forEach((val, idx) => {
@@ -1533,15 +1722,96 @@ function loopCanvas() {
 //   判定线函数，undefined/0:默认,1:非,2:恒成立
 function drawLine(bool: number, lineScale: number) {
   const tw = 1 - tween.easeOutSine(timeOut.second * 1.5);
-  for (const line of app.linesReversed) {
+  for (const line of app.lineRenderOrder) {
     if ((line as any).isBlockMarker) continue;
     if (bool ^ Number(line.imageD) && timeOut.second < 0.67) {
       ctxfg.globalAlpha = line.alpha;
       ctxfg.setTransform(line.cosr * tw, line.sinr, -line.sinr * tw, line.cosr, app.wlen + (line.offsetX - app.wlen) * tw, line.offsetY); // Hiahiah
+
+      // Text line rendering
+      if ((line as any).textTrack || (line as any).textEvents?.length) {
+        const text = (line as any).textVal;
+        if (text) {
+          const scaleX = (line as any).scaleXVal ?? 1;
+          const scaleY = (line as any).scaleYVal ?? 1;
+          if (scaleX !== 0 && scaleY !== 0) {
+            ctxfg.save();
+            ctxfg.scale(scaleX, scaleY);
+            if (line.colorVal) {
+              const [r, g, b] = line.colorVal;
+              ctxfg.fillStyle = `rgb(${r},${g},${b})`;
+            } else {
+              ctxfg.fillStyle = '#fff';
+            }
+            const fontSize = (canvasfg.height / 900) * 50;
+            ctxfg.font = `${fontSize}px ${FONT_FAMILY}`;
+
+            const anchor = (line as any).anchor;
+            const anchorX = anchor ? (Array.isArray(anchor) ? Number(anchor[0]) : Number(anchor.x)) : 0.5;
+            const anchorY = anchor ? (Array.isArray(anchor) ? Number(anchor[1]) : Number(anchor.y)) : 0.5;
+            const safeAnchorX = isFinite(anchorX) ? anchorX : 0.5;
+            const safeAnchorY = isFinite(anchorY) ? anchorY : 0.5;
+
+            // Multiline support (\n)
+            const lines = String(text).split('\n');
+            const lineHeight = fontSize * 1.2;
+            const totalH = (lines.length - 1) * lineHeight;
+            const startY = -safeAnchorY * totalH;
+
+            // Alignment
+            if (Math.abs(safeAnchorX - 0.5) < 0.01) {
+              ctxfg.textAlign = 'center';
+            } else if (safeAnchorX <= 0.1) {
+              ctxfg.textAlign = 'left';
+            } else if (safeAnchorX >= 0.9) {
+              ctxfg.textAlign = 'right';
+            } else {
+              ctxfg.textAlign = 'left';
+            }
+
+            if (Math.abs(safeAnchorY - 0.5) < 0.01) {
+              ctxfg.textBaseline = 'middle';
+            } else if (safeAnchorY <= 0.1) {
+              ctxfg.textBaseline = 'top';
+            } else if (safeAnchorY >= 0.9) {
+              ctxfg.textBaseline = 'bottom';
+            } else {
+              ctxfg.textBaseline = 'middle';
+            }
+
+            for (let li = 0; li < lines.length; li++) {
+              const lineText = lines[li];
+              let x = 0;
+              if (ctxfg.textAlign === 'left' && safeAnchorX > 0.1 && safeAnchorX < 0.9) {
+                const w = ctxfg.measureText(lineText).width;
+                x = -safeAnchorX * w;
+              }
+              const y = startY + li * lineHeight;
+              ctxfg.fillText(lineText, x, y);
+            }
+
+            ctxfg.restore();
+          }
+        }
+        continue;
+      }
+
       const imgS = (line.imageU ? lineScale * 18.75 : canvasfg.height) * line.imageS / 1080;
-      const imgW = imgS * line.imageW * line.imageA;
-      const imgH = imgS * line.imageH;
-      ctxfg.drawImage(line.imageL[line.imageC && lineColor.checked ? stat.lineStatus : 0], -imgW / 2, -imgH / 2, imgW, imgH);
+      const imgW = imgS * line.imageW * line.imageA * (line.scaleXVal ?? 1);
+      const imgH = imgS * line.imageH * (line.scaleYVal ?? 1);
+      const img = line.imageL[line.imageC && lineColor.checked ? stat.lineStatus : 0] || line.imageL[0];
+      if (line.colorVal) {
+        const [r, g, b] = line.colorVal;
+        const isDefaultLine = !line.imageL || line.imageL[0] === res.JudgeLine;
+        if (isDefaultLine) {
+          ctxfg.fillStyle = `rgb(${r},${g},${b})`;
+          ctxfg.fillRect(-imgW / 2, -imgH / 2, imgW, imgH);
+        } else if (img) {
+          drawTintedImage(ctxfg, img, -imgW / 2, -imgH / 2, imgW, imgH, r, g, b);
+        }
+      } else if (img) {
+        ctxfg.drawImage(img, -imgW / 2, -imgH / 2, imgW, imgH);
+      }
     }
   }
   ctxfg.globalAlpha = 1;
@@ -2030,6 +2300,7 @@ async function mainPlay(): Promise<void> {
     stat.level = levelInfoHandler.getLevelNumber();
     if (app.chart != null) stat.reset(app.chart.numOfNotes, md5, format, selectspeed.value);
     await loadLineData({ onwarn: sendWarning });
+    effectManager.setChart(selectchart.value, (charts.get(selectchart.value) as any)?.bpmList);
     duration0 = app.duration / app.speed;
     isInEnd = false;
     isOutStart = false;
@@ -2061,6 +2332,7 @@ async function mainPlay(): Promise<void> {
     activeRawTouches.clear();
     blockedFingerIds.clear();
     noiseShaderRenderer.resetTouches();
+    effectManager.reset();
     for (const callback of main.end.values()) await callback();
   }
 }

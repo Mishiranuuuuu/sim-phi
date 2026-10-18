@@ -4,6 +4,7 @@ import { type BeatArray, BpmList } from './BpmList';
 import { easing } from './easing.js';
 import { cubicBezier } from './cubicBezier.js';
 import { parseBlockAreaList, parseLine2Area, parseNoiseAreaOptions } from '../../utils/rpeBlock';
+import { normalizeAttachUI, type UIElementName } from '../../utils/Chart';
 interface BpmEventRPE {
   startTime: BeatArray;
   bpm: number;
@@ -382,7 +383,14 @@ class LineRPE1 {
       judgeLineDisappearEvents: [] as JudgeLineEventPGS[],
       judgeLineMoveEvents: [] as JudgeLineEventPGS[],
       judgeLineRotateEvents: [] as JudgeLineEventPGS[],
-      isBlockMarker: false
+      isBlockMarker: false,
+      attachUI: undefined as UIElementName | undefined,
+      scaleXEvents: undefined as any[] | undefined,
+      scaleYEvents: undefined as any[] | undefined,
+      colorEvents: undefined as any[] | undefined,
+      textEvents: undefined as any[] | undefined,
+      anchor: undefined as [number, number] | undefined,
+      zOrder: undefined as number | undefined
     };
     for (const i of this.moveEvents!) {
       result.judgeLineMoveEvents.push({
@@ -565,11 +573,14 @@ class LineRPE1 {
       const floorPosition = Math.fround(v1 + v4 / this.bpm * 1.875);
       const note = {
         type: i.type,
-        time: i.time + (i.isFake ? 1e9 : 0),
+        // Fake notes are visual-only.  Keep their actual time so they render,
+        // and let the judgement path exclude them using this flag.
+        time: i.time,
         positionX: i.positionX,
         holdTime: i.holdTime,
         speed: i.speed * speedFactor,
-        floorPosition
+        floorPosition,
+        isFake: i.isFake
       };
       if (i.isHidden) {
         note.speed = 0;
@@ -613,8 +624,10 @@ interface JudgeLineRPE {
   Texture: string;
   eventLayers: (EventLayer | null)[];
   extended?: {
-    scaleXEvents: LineEventRPE[];
-    scaleYEvents: LineEventRPE[];
+    scaleXEvents?: LineEventRPE[];
+    scaleYEvents?: LineEventRPE[];
+    colorEvents?: any[];
+    textEvents?: any[];
   } | null;
   notes: NoteRPE[] | null;
   Group: number;
@@ -685,7 +698,6 @@ export function parse(pec: string, filename: string): {
     if (i.bpmfactor === undefined) i.bpmfactor = 1;
     if (i.father === undefined) i.father = -1;
     if (i.isCover !== 1) warn(1, 'ImplementionWarning', `未兼容isCover=${i.isCover}(可能无法正常显示)\n位于${i.LineId}号判定线`);
-    if (i.zOrder !== 0) warn(1, 'ImplementionWarning', `未兼容zOrder=${i.zOrder}(可能无法正常显示)\n位于${i.LineId}号判定线`);
     if (i.bpmfactor !== 1) warn(1, 'ImplementionWarning', `未兼容bpmfactor=${i.bpmfactor}(可能无法正常显示)\n位于${i.LineId}号判定线`);
     const lineRPE = new LineRPE1(bpmList.baseBpm);
     lineRPE.setId(i.LineId);
@@ -693,10 +705,12 @@ export function parse(pec: string, filename: string): {
       for (const note of i.notes) {
         if (note.alpha === undefined) note.alpha = 255;
         if (note.above !== 1 && note.above !== 2) warn(1, 'NoteSideWarning', `检测到非法方向:${note.above}(将被视为2)\n位于:"${JSON.stringify(note)}"`);
-        if (note.isFake !== 0) warn(1, 'NoteFakeWarning', `检测到FakeNote(可能无法正常显示)\n位于:"${JSON.stringify(note)}"`);
         if (note.size !== 1) warn(1, 'ImplementionWarning', `未兼容size=${note.size}(可能无法正常显示)\n位于:"${JSON.stringify(note)}"`);
         if (note.yOffset !== 0) warn(1, 'ImplementionWarning', `未兼容yOffset=${note.yOffset}(可能无法正常显示)\n位于:"${JSON.stringify(note)}"`);
-        if (note.visibleTime !== 999999) warn(1, 'ImplementionWarning', `未兼容visibleTime=${note.visibleTime}(可能无法正常显示)\n位于:"${JSON.stringify(note)}"`);
+        // Both values are commonly used by RPE editors to mean "always
+        // visible".  The renderer's normal visibility calculation already
+        // handles that behavior.
+        if (note.visibleTime !== 99999 && note.visibleTime !== 999999) warn(1, 'ImplementionWarning', `未兼容visibleTime=${note.visibleTime}(可能无法正常显示)\n位于:"${JSON.stringify(note)}"`);
         if (note.alpha !== 255 && note.alpha !== 0) warn(1, 'ImplementionWarning', `未兼容alpha=${note.alpha}(可能无法正常显示)\n位于:"${JSON.stringify(note)}"`);
         const type = [0, 1, 4, 2, 3].indexOf(note.type);
         const time = bpmList.calc2(note.startTime);
@@ -755,13 +769,49 @@ export function parse(pec: string, filename: string): {
     const rawLine = data.judgeLineList[i];
     const lineRPE = rawLine.judgeLineRPE; // TODO: 待优化
     const judgeLine = lineRPE.format({ onwarning: (msg: string) => warn(1, 'OtherWarning', `${msg}`) });
+    judgeLine.zOrder = rawLine.zOrder;
     const texture = String(rawLine.Texture).replace(/\0/g, '');
     const isMarker = /isSubtract[01]\.(png|jpg|jpeg|webp)$/i.test(texture);
     if (isMarker) {
       judgeLine.isBlockMarker = true;
     }
+    const attachUI = normalizeAttachUI((rawLine as any).attachUI);
+    if (attachUI) {
+      judgeLine.attachUI = attachUI;
+    }
+    const layerScaleXEvents = rawLine.eventLayers?.flatMap(el => (el as any)?.scaleXEvents || []) || [];
+    const scaleX = rawLine.extended?.scaleXEvents || (rawLine as any).scaleXEvents || (layerScaleXEvents.length ? layerScaleXEvents : undefined);
+    const layerScaleYEvents = rawLine.eventLayers?.flatMap(el => (el as any)?.scaleYEvents || []) || [];
+    const scaleY = rawLine.extended?.scaleYEvents || (rawLine as any).scaleYEvents || (layerScaleYEvents.length ? layerScaleYEvents : undefined);
+    if (scaleX?.length || scaleY?.length) {
+      judgeLine.scaleXEvents = scaleX;
+      judgeLine.scaleYEvents = scaleY;
+    }
+    const layerColorEvents = rawLine.eventLayers?.flatMap(el => (el as any)?.colorEvents || []) || [];
+    const colorEvents = rawLine.extended?.colorEvents || (rawLine as any).colorEvents || (layerColorEvents.length ? layerColorEvents : undefined);
+    if (colorEvents?.length) {
+      judgeLine.colorEvents = colorEvents;
+    }
+    const layerTextEvents = rawLine.eventLayers?.flatMap(el => (el as any)?.textEvents || []) || [];
+    const textEvents = rawLine.extended?.textEvents || (rawLine as any).textEvents || (layerTextEvents.length ? layerTextEvents : undefined);
+    if (textEvents?.length) {
+      judgeLine.textEvents = textEvents;
+    }
+    if ((rawLine as any).anchor) {
+      const a = (rawLine as any).anchor;
+      const ax = Array.isArray(a) ? Number(a[0]) : Number(a.x);
+      const ay = Array.isArray(a) ? Number(a[1]) : Number(a.y);
+      judgeLine.anchor = [Number.isFinite(ax) ? ax : 0.5, Number.isFinite(ay) ? ay : 0.5];
+    }
     result.judgeLineList.push(judgeLine);
     result.numOfNotes! += judgeLine.numOfNotes;
+  }
+  result.attachUIList = {};
+  for (let i = 0; i < result.judgeLineList.length; i++) {
+    const jl = result.judgeLineList[i];
+    if (jl.attachUI) {
+      result.attachUIList[jl.attachUI] = i;
+    }
   }
   result.blockAreaList = [];
   if (Array.isArray((data as any).blockAreaList)) {
@@ -771,6 +821,7 @@ export function parse(pec: string, filename: string): {
   const line2areaBlocks = parseLine2Area(data.judgeLineList, data.BPMList as any, result.judgeLineList);
   result.blockAreaList.push(...line2areaBlocks);
   result.ignoreTripleInversion = parseNoiseAreaOptions(data).ignoreTripleInversion;
+  result.bpmList = data.BPMList as any[];
   return { data: result, messages: warnings, info, line, format };
   function getWarning(code: EasingCode, le: LineEventRPE) {
     if (code === EasingCode.TypeNotSupported) warn(1, 'EasingTypeWarning', `未知的缓动类型:${le.easingType}(将被视为1)\n位于:"${JSON.stringify(le)}"`);

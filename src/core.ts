@@ -1,3 +1,4 @@
+import { RpeTrack, RpeColorTrack, RpeTextTrack, RPETempo } from './utils/rpeBlock';
 interface SpeedEventExtends extends SpeedEvent {
   floorPosition: number;
   floorPosition2: number;
@@ -66,6 +67,14 @@ interface JudgeLineExtends extends JudgeLine {
   imageA: number;
   imageL: [ImageBitmap, ImageBitmap, null, ImageBitmap];
   imageC: boolean;
+  scaleXVal?: number;
+  scaleYVal?: number;
+  scaleXTrack?: RpeTrack;
+  scaleYTrack?: RpeTrack;
+  colorVal?: [number, number, number];
+  colorTrack?: RpeColorTrack;
+  textVal?: string;
+  textTrack?: RpeTextTrack;
 }
 interface BlockAreaExtends extends BlockArea {
   centerX: number;
@@ -324,6 +333,8 @@ export class Renderer {
   public readonly drags: NoteExtends[];
   public readonly flicks: NoteExtends[];
   public readonly holds: NoteExtends[];
+  /** Render-only order; `lines` always remains in chart-index order. */
+  public lineRenderOrder: JudgeLineExtends[];
   public linesReversed: JudgeLineExtends[];
   public notesReversed: NoteExtends[];
   public tapsReversed: NoteExtends[];
@@ -388,6 +399,7 @@ export class Renderer {
     this.drags = [];
     this.flicks = [];
     this.holds = [];
+    this.lineRenderOrder = [];
     this.linesReversed = [];
     this.notesReversed = [];
     this.tapsReversed = [];
@@ -459,6 +471,7 @@ export class Renderer {
   //   note预处理
   public prerenderChart(chart: Chart): void {
     this.lines.length = 0;
+    this.lineRenderOrder.length = 0;
     this.notes.length = 0;
     this.taps.length = 0;
     this.drags.length = 0;
@@ -553,6 +566,25 @@ export class Renderer {
       line.rotation = 0;
       line.positionY = 0; //   临时过渡用
       line.positionY2 = 0;
+      line.scaleXVal = 1;
+      line.scaleYVal = 1;
+      const tempo = chartNew.bpmList?.length
+        ? new RPETempo(chartNew.bpmList)
+        : new RPETempo([{ startTime: [0, 0, 1], bpm: line.bpm }]);
+      if (line.scaleXEvents?.length) {
+        line.scaleXTrack = new RpeTrack(line.scaleXEvents, 'X', 1, { x: 0, y: 0 }, tempo);
+      }
+      if (line.scaleYEvents?.length) {
+        line.scaleYTrack = new RpeTrack(line.scaleYEvents, 'Y', 1, { x: 0, y: 0 }, tempo);
+      }
+      if (line.colorEvents?.length) {
+        line.colorTrack = new RpeColorTrack(line.colorEvents, [255, 255, 255], tempo);
+        line.colorVal = [255, 255, 255];
+      }
+      if (line.textEvents?.length) {
+        line.textTrack = new RpeTextTrack(line.textEvents, '', tempo);
+        line.textVal = '';
+      }
       // line.speedEvents = normalizeSpeedEvent(line.speedEvents) as SpeedEventExtends[];
       // line.judgeLineDisappearEvents = normalizeLineEvent(line.judgeLineDisappearEvents) as LineEventExtends[];
       // line.judgeLineMoveEvents = normalizeLineEvent(line.judgeLineMoveEvents) as LineEventExtends[];
@@ -593,6 +625,14 @@ export class Renderer {
     this.drags.sort(sortNote);
     this.holds.sort(sortNote);
     this.flicks.sort(sortNote);
+    // Match Phira-Pro's approach: preserve line indices for data references
+    // (including attachUI and line images), while using a separate stable
+    // ordering for visual layering. Lower zOrder is drawn first (below),
+    // higher zOrder is drawn on top. Ascending line-id tie break preserves
+    // the natural chart creation order (backgrounds/overlays below foregrounds/text).
+    this.lineRenderOrder = this.lines
+      .filter(line => !line.attachUI)
+      .toSorted((a, b) => (a.zOrder ?? 0) - (b.zOrder ?? 0) || a.lineId - b.lineId);
     this.notesReversed = this.notes.toReversed();
     this.tapsReversed = this.taps.toReversed();
     this.dragsReversed = this.drags.toReversed();
@@ -673,6 +713,18 @@ export class Renderer {
         line.sinr = Math.sin(line.rotation);
         line.rotateEventsIndex = i;
         break;
+      }
+      if (line.scaleXTrack) {
+        line.scaleXVal = line.scaleXTrack.sample(time)[0];
+      }
+      if (line.scaleYTrack) {
+        line.scaleYVal = line.scaleYTrack.sample(time)[0];
+      }
+      if (line.colorTrack) {
+        line.colorVal = line.colorTrack.sample(time);
+      }
+      if (line.textTrack) {
+        line.textVal = line.textTrack.sample(time);
       }
       for (let i = line.speedEventsIndex, len = line.speedEvents.length; i < len; i++) {
         const evt = line.speedEvents[i];

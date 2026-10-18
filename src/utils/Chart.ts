@@ -98,6 +98,8 @@ export class Note {
   public holdTime: number;
   public speed: number;
   public floorPosition: number;
+  /** Decorative RPE notes: render them, but never include them in judgement. */
+  public isFake: boolean;
   public constructor(note: Record<string, unknown>) {
     this.type = Type.int(note.type);
     this.time = Type.int(note.time);
@@ -105,6 +107,7 @@ export class Note {
     this.holdTime = Type.int(note.holdTime);
     this.speed = Type.float(note.speed);
     this.floorPosition = Type.float(note.floorPosition);
+    this.isFake = Type.bool(note.isFake);
   }
 }
 export class JudgeLineEvent {
@@ -123,6 +126,62 @@ export class JudgeLineEvent {
     this.end2 = Type.float(event.end2);
   }
 }
+export type UIElementName = 'pause' | 'comboNumber' | 'combo' | 'score' | 'bar' | 'name' | 'level';
+
+export function normalizeAttachUI(val: unknown): UIElementName | undefined {
+  if (val == null) return undefined;
+  if (typeof val === 'number') {
+    switch (val) {
+      case 1: return 'pause';
+      case 2: return 'comboNumber';
+      case 3: return 'combo';
+      case 4: return 'score';
+      case 5: return 'bar';
+      case 6: return 'name';
+      case 7: return 'level';
+      default: return undefined;
+    }
+  }
+  if (typeof val === 'string') {
+    const s = val.trim().toLowerCase().replace(/[-_\s]/g, '');
+    switch (s) {
+      case '1':
+      case 'pause':
+        return 'pause';
+      case '2':
+      case 'combonumber':
+      case 'combonum':
+        return 'comboNumber';
+      case '3':
+      case 'combo':
+      case 'combotext':
+        return 'combo';
+      case '4':
+      case 'score':
+      case 'scoretext':
+        return 'score';
+      case '5':
+      case 'bar':
+      case 'progressbar':
+      case 'progress':
+        return 'bar';
+      case '6':
+      case 'name':
+      case 'songname':
+      case 'title':
+        return 'name';
+      case '7':
+      case 'level':
+      case 'diff':
+      case 'difficulty':
+        return 'level';
+      default:
+        return undefined;
+    }
+  }
+  return undefined;
+}
+
 export class JudgeLine {
   public numOfNotes: number;
   public numOfNotesAbove: number;
@@ -135,6 +194,13 @@ export class JudgeLine {
   public judgeLineMoveEvents: JudgeLineEvent[];
   public judgeLineRotateEvents: JudgeLineEvent[];
   public isBlockMarker?: boolean;
+  public attachUI?: UIElementName;
+  public scaleXEvents?: any[];
+  public scaleYEvents?: any[];
+  public colorEvents?: any[];
+  public textEvents?: any[];
+  public anchor?: [number, number];
+  public zOrder?: number;
   public constructor(line: Record<string, unknown>) {
     this.numOfNotes = Type.int(line.numOfNotes);
     this.numOfNotesAbove = Type.int(line.numOfNotesAbove);
@@ -150,6 +216,13 @@ export class JudgeLine {
     this.judgeLineMoveEvents = Type.arr(line.judgeLineMoveEvents, JudgeLineEvent);
     this.judgeLineRotateEvents = Type.arr(line.judgeLineRotateEvents, JudgeLineEvent);
     if (line.isBlockMarker) this.isBlockMarker = true;
+    if (line.attachUI) this.attachUI = normalizeAttachUI(line.attachUI);
+    if (line.scaleXEvents) this.scaleXEvents = line.scaleXEvents as any[];
+    if (line.scaleYEvents) this.scaleYEvents = line.scaleYEvents as any[];
+    if (line.colorEvents) this.colorEvents = line.colorEvents as any[];
+    if (line.textEvents) this.textEvents = line.textEvents as any[];
+    if (line.anchor) this.anchor = line.anchor as [number, number];
+    if (line.zOrder != null) this.zOrder = Type.int(line.zOrder);
   }
 }
 export class Chart {
@@ -159,6 +232,8 @@ export class Chart {
   public judgeLineList: JudgeLine[];
   public blockAreaList: BlockArea[];
   public ignoreTripleInversion?: boolean;
+  public attachUIList?: Partial<Record<UIElementName, number>>;
+  public bpmList?: any[];
   public constructor(input?: Record<string, unknown>) {
     const chart = input || {};
     this.formatVersion = Type.int(chart.formatVersion);
@@ -167,7 +242,19 @@ export class Chart {
     this.judgeLineList = Type.arr(chart.judgeLineList, JudgeLine);
     this.blockAreaList = Type.arr(chart.blockAreaList, BlockArea);
     if (chart.ignoreTripleInversion) this.ignoreTripleInversion = true;
+    if (chart.bpmList) this.bpmList = chart.bpmList as any[];
     if (chart.numOfNotes == null) this.numOfNotes = this.judgeLineList.reduce((a, b) => a + b.numOfNotes, 0);
+
+    this.attachUIList = {};
+    if (chart.attachUIList && typeof chart.attachUIList === 'object') {
+      Object.assign(this.attachUIList, chart.attachUIList);
+    }
+    for (let i = 0; i < this.judgeLineList.length; i++) {
+      const jl = this.judgeLineList[i];
+      if (jl.attachUI) {
+        this.attachUIList[jl.attachUI] = i;
+      }
+    }
   }
   public duplicate(): Chart {
     return Type.obj(this, Chart);
@@ -201,7 +288,9 @@ export function structChart(chart: ChartPGS, filename: string): ChartData {
   // if (result.offset < 0) throw new Error('Offset must be non-negative');
   // if (result.numOfNotes <= 0) throw new Error('At least one note is required');
   const warn = (code: number, name: string, message: string) => messages.push({ host: 'Core', code, name, message, target: filename });
-  if (numOfLines > 100) warn(1, 'LineCountWarning', `Expected at most 100 items in judgeLineList, but got ${numOfLines}`);
+  // RPE charts commonly use hundreds of decorative judge lines.  This is a
+  // performance consideration, not invalid chart data.
+  if (numOfLines > 512) warn(1, 'LineCountWarning', `Expected at most 512 items in judgeLineList, but got ${numOfLines}`);
   let maxNoteSeconds = 0;
   for (const { bpm, notesAbove, notesBelow } of result.judgeLineList) {
     for (const { type, time, holdTime } of notesAbove) {

@@ -373,6 +373,246 @@ export class RpeTrack {
   }
 }
 
+export class RpeColorTrack {
+  private rTrack: RpeTrack;
+  private gTrack: RpeTrack;
+  private bTrack: RpeTrack;
+
+  public constructor(
+    rawEvents: any[] | undefined,
+    defaultColor: [number, number, number] = [255, 255, 255],
+    tempo: RPETempo
+  ) {
+    const getChannel = (val: any, idx: number, fallback: number) => {
+      if (Array.isArray(val)) {
+        const n = Number(val[idx]);
+        return Number.isFinite(n) ? n : fallback;
+      }
+      if (typeof val === 'string') {
+        const hex = val.replace(/^#/, '');
+        if (hex.length === 6) {
+          const n = parseInt(hex.substring(idx * 2, idx * 2 + 2), 16);
+          return Number.isFinite(n) ? n : fallback;
+        }
+      }
+      if (val && typeof val === 'object') {
+        const keys = ['r', 'g', 'b'];
+        const n = Number(val[keys[idx]]);
+        return Number.isFinite(n) ? n : fallback;
+      }
+      if (typeof val === 'number') {
+        return Number.isFinite(val) ? val : fallback;
+      }
+      return fallback;
+    };
+
+    const rEvents = rawEvents?.map(e => ({
+      ...e,
+      start: getChannel(e.start, 0, defaultColor[0]),
+      end: getChannel(e.end, 0, defaultColor[0])
+    }));
+    const gEvents = rawEvents?.map(e => ({
+      ...e,
+      start: getChannel(e.start, 1, defaultColor[1]),
+      end: getChannel(e.end, 1, defaultColor[1])
+    }));
+    const bEvents = rawEvents?.map(e => ({
+      ...e,
+      start: getChannel(e.start, 2, defaultColor[2]),
+      end: getChannel(e.end, 2, defaultColor[2])
+    }));
+
+    this.rTrack = new RpeTrack(rEvents, 'Move', defaultColor[0], { x: 0, y: 0 }, tempo);
+    this.gTrack = new RpeTrack(gEvents, 'Move', defaultColor[1], { x: 0, y: 0 }, tempo);
+    this.bTrack = new RpeTrack(bEvents, 'Move', defaultColor[2], { x: 0, y: 0 }, tempo);
+  }
+
+  public sample(time: number): [number, number, number] {
+    return [
+      Math.max(0, Math.min(255, Math.round(this.rTrack.sample(time)[0]))),
+      Math.max(0, Math.min(255, Math.round(this.gTrack.sample(time)[0]))),
+      Math.max(0, Math.min(255, Math.round(this.bTrack.sample(time)[0])))
+    ];
+  }
+}
+
+export interface RawRpeTextEvent {
+  startTime: BeatFraction;
+  endTime: BeatFraction;
+  start: string | number;
+  end: string | number;
+  easingType?: number;
+  easingLeft?: number;
+  easingRight?: number;
+  bezier?: boolean | number;
+  bezierPoints?: [number, number, number, number];
+}
+
+interface TimedTextEntry {
+  startSec: number;
+  endSec: number;
+  startRaw: string;
+  endRaw: string;
+  easingType: number;
+  easingLeft: number;
+  easingRight: number;
+  bezier: boolean;
+  bezierPoints: [number, number, number, number];
+  numericTween?: {
+    prefix: string;
+    suffix: string;
+    startNum: number;
+    endNum: number;
+    decimals: number;
+  };
+}
+
+export class RpeTextTrack {
+  private events: TimedTextEntry[] = [];
+  public fallback: string;
+
+  public constructor(
+    rawEvents: RawRpeTextEvent[] | undefined,
+    fallback = '',
+    tempo: RPETempo
+  ) {
+    this.fallback = fallback;
+    if (!rawEvents || rawEvents.length === 0) return;
+
+    for (const raw of rawEvents) {
+      if (raw.start == null && raw.end == null) continue;
+      const startSec = tempo.seconds(parseBeat(raw.startTime));
+      const endSec = tempo.seconds(parseBeat(raw.endTime));
+      const startRaw = raw.start != null ? String(raw.start) : '';
+      const endRaw = raw.end != null ? String(raw.end) : '';
+      const easingType = Math.max(1, Math.min(29, Number(raw.easingType) || 1));
+      const easingLeft = Math.max(0, Math.min(1, Number(raw.easingLeft) || 0));
+      const easingRight = Math.max(0, Math.min(1, raw.easingRight != null ? Number(raw.easingRight) : 1));
+      const bezier = !!raw.bezier;
+      const bezierPoints = raw.bezierPoints || [0, 0, 1, 1];
+
+      let numericTween: TimedTextEntry['numericTween'];
+      if (startRaw !== endRaw) {
+        // 1. Check for %P% placeholder
+        const pRegex = /(.*)%P%([+-]?\d+(?:\.\d+)?)(.*)/s;
+        const mStart = startRaw.match(pRegex);
+        const mEnd = endRaw.match(pRegex);
+        if (mStart && mEnd) {
+          const sNum = parseFloat(mStart[2]);
+          const eNum = parseFloat(mEnd[2]);
+          const decStart = (mStart[2].split('.')[1] || '').length;
+          const decEnd = (mEnd[2].split('.')[1] || '').length;
+          numericTween = {
+            prefix: mStart[1],
+            suffix: mStart[3],
+            startNum: sNum,
+            endNum: eNum,
+            decimals: Math.max(decStart, decEnd)
+          };
+        } else {
+          // 2. Check if both strings are pure numbers
+          const trimmedS = startRaw.trim();
+          const trimmedE = endRaw.trim();
+          if (trimmedS !== '' && trimmedE !== '' && !isNaN(Number(trimmedS)) && !isNaN(Number(trimmedE))) {
+            const sNum = Number(trimmedS);
+            const eNum = Number(trimmedE);
+            const decStart = (trimmedS.split('.')[1] || '').length;
+            const decEnd = (trimmedE.split('.')[1] || '').length;
+            numericTween = {
+              prefix: '',
+              suffix: '',
+              startNum: sNum,
+              endNum: eNum,
+              decimals: Math.max(decStart, decEnd)
+            };
+          }
+        }
+      }
+
+      this.events.push({
+        startSec,
+        endSec,
+        startRaw,
+        endRaw,
+        easingType,
+        easingLeft,
+        easingRight,
+        bezier,
+        bezierPoints,
+        numericTween
+      });
+    }
+
+    this.events.sort((a, b) => a.startSec - b.startSec);
+  }
+
+  public sample(time: number): string {
+    if (this.events.length === 0) return this.fallback;
+    let lo = 0;
+    let hi = this.events.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.events[mid].startSec <= time + 1e-9) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo === 0) return this.fallback;
+    const entry = this.events[lo - 1];
+
+    if (entry.startRaw === entry.endRaw) {
+      return entry.startRaw;
+    }
+
+    if (time >= entry.endSec) {
+      if (entry.numericTween) {
+        const numStr = entry.numericTween.decimals > 0
+          ? entry.numericTween.endNum.toFixed(entry.numericTween.decimals)
+          : Math.round(entry.numericTween.endNum).toString();
+        return entry.numericTween.prefix + numStr + entry.numericTween.suffix;
+      }
+      return entry.endRaw;
+    }
+
+    const p = entry.endSec <= entry.startSec
+      ? 1
+      : Math.max(0, Math.min(1, (time - entry.startSec) / (entry.endSec - entry.startSec)));
+
+    let eased = p;
+    if (entry.bezier) {
+      const [x1, y1, x2, y2] = entry.bezierPoints;
+      const component = (t: number, a: number, b: number) =>
+        3 * t * Math.pow(1 - t, 2) * a + 3 * t * t * (1 - t) * b + Math.pow(t, 3);
+      let blo = 0;
+      let bhi = 1;
+      for (let step = 0; step < 40; step++) {
+        const mid = (blo + bhi) * 0.5;
+        if (component(mid, x1, x2) < p) blo = mid;
+        else bhi = mid;
+      }
+      eased = component((blo + bhi) * 0.5, y1, y2);
+    } else {
+      const base = rpeCurve(entry.easingType, entry.easingLeft);
+      const range = rpeCurve(entry.easingType, entry.easingRight) - base;
+      if (Math.abs(range) < 1e-12) {
+        eased = p;
+      } else {
+        const clipped = entry.easingLeft + (entry.easingRight - entry.easingLeft) * p;
+        eased = (rpeCurve(entry.easingType, clipped) - base) / range;
+      }
+    }
+
+    if (entry.numericTween) {
+      const val = entry.numericTween.startNum + (entry.numericTween.endNum - entry.numericTween.startNum) * eased;
+      const numStr = entry.numericTween.decimals > 0
+        ? val.toFixed(entry.numericTween.decimals)
+        : Math.round(val).toString();
+      return entry.numericTween.prefix + numStr + entry.numericTween.suffix;
+    }
+
+    return eased < 1 ? entry.startRaw : entry.endRaw;
+  }
+}
+
+
 const RPE_UNIT = 2 / 1350;
 
 export interface ActiveIntervalSeconds {

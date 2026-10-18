@@ -54,6 +54,15 @@ reader.use({
     return { pathname: i.pathname, type: 'extra', data: i.text };
   }
 });
+reader.use({
+  pattern: /\.(glsl|frag|vert|fs|vs)$/i,
+  type: 'text',
+  mustMatch: true,
+  weight: 20,
+  read(i: ByteData): ShaderReaderData {
+    return { pathname: i.pathname, type: 'shader', data: i.text || '' };
+  }
+});
 if (Object.hasOwn(self, 'webp')) {
   reader.use({
     pattern: /\.webp$/i,

@@ -10,7 +10,7 @@ export class LevelInfoHandler {
     this.selectDifficulty = selectDifficulty;
     this.selectLevel = selectLevel;
     Object.keys(table).forEach(key => this.selectDifficulty.add(new Option(key.toUpperCase())));
-    for (let i = 0; i < 17; i++) this.selectLevel.add(new Option(String(i || '?')));
+    for (let i = 0; i < 21; i++) this.selectLevel.add(new Option(String(i || '?')));
     this.selectDifficulty.addEventListener('change', () => this.updateInternal(0));
     this.selectLevel.addEventListener('change', () => this.updateInternal(1));
     this.updateInternal(-1);
