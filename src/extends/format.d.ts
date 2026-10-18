@@ -32,6 +32,12 @@ interface BlockAreaPGS {
   rpeCanvas?: boolean;
   rpeArea?: any;
   activeIntervals?: any[];
+  rawHeight?: number;
+  yScale?: number;
+  transA?: number;
+  transB?: number;
+  transC?: number;
+  transD?: number;
 }
 interface NotePGS {
   type: number;

@@ -908,7 +908,7 @@ export class RpeLine2AreaEvaluator {
     };
 
     const lineRot = line ? line.rotation : 0; // in radians
-    const rotDeg = -lineRot * 180 / Math.PI;
+    const rotDeg = lineRot * 180 / Math.PI;
 
     // Line center in chart coordinates [-1, 1] x [-1/aspect, 1/aspect]
     const chartPos = line

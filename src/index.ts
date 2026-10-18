@@ -1493,11 +1493,19 @@ function loopCanvas() {
         }
 
         if (debugBlockArea.checked) {
-          ctxfg.setTransform(blockArea.cosr, blockArea.sinr, -blockArea.sinr, blockArea.cosr, blockArea.centerX, blockArea.centerY);
+          ctxfg.setTransform(
+            blockArea.transA ?? blockArea.cosr,
+            blockArea.transB ?? blockArea.sinr,
+            blockArea.transC ?? -blockArea.sinr,
+            blockArea.transD ?? blockArea.cosr,
+            blockArea.centerX,
+            blockArea.centerY
+          );
           ctxfg.globalAlpha = 1;
           ctxfg.strokeStyle = blockArea.isSubtract ? '#00ffff' : '#ff0000';
           ctxfg.lineWidth = 2;
-          ctxfg.strokeRect(-blockArea.width / 2, -blockArea.height / 2, blockArea.width, blockArea.height);
+          const rectH = blockArea.rawHeight ?? blockArea.height;
+          ctxfg.strokeRect(-blockArea.width / 2, -rectH / 2, blockArea.width, rectH);
           ctxfg.fillStyle = 'orange';
           ctxfg.fillRect(-lineScale * 0.2, -lineScale * 0.2, lineScale * 0.4, lineScale * 0.4);
           ctxfg.fillStyle = 'white';
@@ -1971,10 +1979,10 @@ function drawOurOwnBlockAreas() {
 
   function setCtxTransform(ctx: CanvasRenderingContext2D, blockArea: any) {
     ctx.setTransform(
-      blockArea.cosr,
-      blockArea.sinr,
-      -blockArea.sinr,
-      blockArea.cosr,
+      blockArea.transA ?? blockArea.cosr,
+      blockArea.transB ?? blockArea.sinr,
+      blockArea.transC ?? -blockArea.sinr,
+      blockArea.transD ?? blockArea.cosr,
       blockArea.centerX,
       blockArea.centerY
     );
@@ -1988,7 +1996,7 @@ function drawOurOwnBlockAreas() {
       ? Math.max(0, Math.min(1, (timeChart - blockArea.appearTime) / 0.5))
       : 1.0;
     const width = blockArea.width;
-    const height = blockArea.height;
+    const height = blockArea.rawHeight ?? blockArea.height;
     const x = -width / 2;
     const y = -height / 2;
 
@@ -2018,7 +2026,7 @@ function drawOurOwnBlockAreas() {
 
   function drawMask(ctx: CanvasRenderingContext2D, blockArea: any) {
     const width = blockArea.width;
-    const height = blockArea.height;
+    const height = blockArea.rawHeight ?? blockArea.height;
     const x = -width / 2;
     const y = -height / 2;
     ctx.save();
