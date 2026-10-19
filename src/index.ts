@@ -22,6 +22,7 @@ import { LevelInfoHandler } from '@/components/InfoHandler';
 import { NoiseShaderRenderer, TouchPoint } from '@/utils/NoiseShader';
 import { UIElementName } from '@/utils/Chart';
 import { effectManager } from '@/utils/EffectManager';
+import { BlockAudio } from '@/utils/BlockAudio';
 const meta = ['Phi\x67ros Simulator', version.split('.'), pubdate, lastupdate] as typeof self._i;
 self._i = meta;
 const FONT_FAMILY = 'Saira,Custom,Noto Sans SC';
@@ -520,6 +521,7 @@ let curTime = 0; //   最近一次暂停的音乐时间(s)
 let curTimeMS = 0; //   最近一次播放的绝对时间(ms)
 let timeBgm = 0; //   当前音乐时间(s)
 let timeChart = 0; //   当前谱面时间(s)
+let timeSong = 0; //   Song time (s), unaffected by playback speed; used for RPETempo-based data (noise fields, effects)
 let duration0 = 0; //   音乐时长(s)
 let isInEnd = false; //   开头过渡动画
 let isOutStart = false; //   结尾过渡动画
@@ -527,6 +529,7 @@ let isOutEnd = false; //   临时变量
 //   必要组件
 const musicController = new AudioController();
 const soundController = new AudioController();
+const blockAudio = new BlockAudio(musicController);
 const frameTimer = new FrameTimer();
 const frameAnimater = new FrameAnimater();
 frameAnimater.setCallback(mainLoop);
@@ -886,7 +889,7 @@ function checkNoiseField(x: number, y: number) {
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || blockArea.isSubtract === undefined) continue;
-    if (!isBlockAreaActive(blockArea, timeChart)) continue;
+    if (!isBlockAreaActive(blockArea, timeSong)) continue;
 
     if (blockAreaContains(blockArea, p, 0, aspect)) {
       if (blockArea.isSubtract) origSub++;
@@ -941,11 +944,11 @@ interact.setMouseEvent({
       blockedFingerIds.delete('mouse_1');
       blockedFingerIds.delete('mouse_2');
     }
-    const inNoise = checkNoiseField(x, y);
+    const isBlocked = blockedFingerIds.has('mouse_0');
     for (let i = 1; i < 32; i <<= 1) {
       //   同时按住多个键时，只有最后一个键的move事件会触发
       if (idx & i) {
-        if (inNoise) hitManager.deactivate('mouse', i);
+        if (isBlocked) hitManager.deactivate('mouse', i);
         else hitManager.moving('mouse', i, x, y);
       } else {
         hitManager.deactivate('mouse', i);
@@ -983,6 +986,7 @@ self.addEventListener('blur', () => {
   activeRawTouches.clear();
   blockedFingerIds.clear();
   noiseShaderRenderer.resetTouches();
+  blockAudio.suspend();
 });
 //   兼容移动设备
 interact.setTouchEvent({
@@ -1004,6 +1008,8 @@ interact.setTouchEvent({
       activeRawTouches.set(touch.identifier, { x, y });
       if (checkNoiseField(x, y)) {
         blockedFingerIds.add(touch.identifier);
+      }
+      if (blockedFingerIds.has(touch.identifier)) {
         hitManager.deactivate('touch', touch.identifier);
       } else {
         hitManager.moving('touch', touch.identifier, x, y);
@@ -1231,6 +1237,7 @@ function mainLoop() {
   } else if (!isOutOver) {
     isOutOver = true;
     audio.stop();
+    blockAudio.reset();
     btnPause.classList.add('disabled'); //   TODO: 优化
     ctxfg.globalCompositeOperation = 'source-over';
     ctxfg.resetTransform();
@@ -1286,7 +1293,9 @@ function loopNoCanvas() {
     isOutEnd = true;
     timeOut.play();
   }
-  timeChart = Math.max(timeBgm - (app.chart.offset + Number(inputOffset.value) / 1e3 || 0) / app.speed, 0);
+  const chartOffsetSec = (app.chart.offset + Number(inputOffset.value) / 1e3 || 0);
+  timeChart = Math.max(timeBgm - chartOffsetSec / app.speed, 0);
+  timeSong = timeBgm * app.speed - chartOffsetSec;
   //   遍历判定线events和Note
   app.updateByTime(timeChart);
   //   更新打击特效和触摸点动画
@@ -1417,17 +1426,37 @@ function loopCanvas() {
   const { bgImage, bgVideo } = tmps;
   ctxfg.clearRect(0, 0, canvasfg.width, canvasfg.height); //   重置画面
 
-  // Update touch tracking for noise field dissolution (ONLY for fingers contacting active noise zones)
+  // Update touch tracking and audio muffling for noise field contact
   const touchPoints: TouchPoint[] = [];
-  if (emitter.eq('play')) {
+  if (emitter.eq('play') && app.blockAreas && app.blockAreas.length > 0) {
+    // 1. Any active touch currently in a noise field becomes blocked
+    for (const [id, pos] of activeRawTouches) {
+      if (checkNoiseField(pos.x, pos.y)) {
+        blockedFingerIds.add(id);
+      }
+    }
+    // 2. Blocked status persists until the touch is released
     for (const id of blockedFingerIds) {
       const pos = activeRawTouches.get(id);
       if (pos) {
         touchPoints.push({ id, x: pos.x, y: pos.y });
+        if (typeof id === 'number') {
+          hitManager.deactivate('touch', id);
+        } else if (typeof id === 'string' && id.startsWith('mouse_')) {
+          const btn = parseInt(id.slice(6), 10);
+          if (!isNaN(btn)) {
+            hitManager.deactivate('mouse', btn === 1 ? 4 : btn === 2 ? 2 : (1 << btn));
+          }
+        }
+      } else {
+        blockedFingerIds.delete(id);
       }
     }
+  } else {
+    blockedFingerIds.clear();
   }
-  noiseShaderRenderer.updateTouches(touchPoints, timeChart);
+  noiseShaderRenderer.updateTouches(touchPoints, timeSong);
+  blockAudio.sync(blockedFingerIds.size > 0);
 
   //   绘制背景
   ctxfg.globalAlpha = 1;
@@ -1490,7 +1519,7 @@ function loopCanvas() {
         if (!blockArea.visible) continue;
 
         if (debugBlockAreaText.checked) {
-          const isActive = isBlockAreaActive(blockArea, timeChart);
+          const isActive = isBlockAreaActive(blockArea, timeSong);
           debugTexts.push(`[Visible] BA${i}: active=${isActive}, isSub=${blockArea.isSubtract}, pos=(${blockArea.centerX.toFixed(1)}, ${blockArea.centerY.toFixed(1)}), size=(${blockArea.width.toFixed(1)}, ${blockArea.height.toFixed(1)}), scale=(${blockArea.scaleX.toFixed(2)}, ${blockArea.scaleY.toFixed(2)}), rot=${blockArea.chartRotation.toFixed(1)}°`);
         }
 
@@ -1538,7 +1567,7 @@ function loopCanvas() {
 
   // Apply post-processing shaders before HUD elements (only non-global shaders when "All shaders affect UI/HUD" is off)
   if (!shaderAffectsUI.checked) {
-    effectManager.render(canvasfg, ctxfg, timeBgm, 'non-global');
+    effectManager.render(canvasfg, ctxfg, timeSong, 'non-global');
   }
 
   const topTransY = lineScale * (timeIn.second < 0.67 ? tween.easeOutSine(timeIn.second * 1.5) - 1 : -tween.easeOutSine(timeOut.second * 1.5)) * 1.75;
@@ -1722,7 +1751,7 @@ function loopCanvas() {
   if (timeIn.second >= 2.5 && timeIn.second < 3) ctxfg.globalAlpha = 1 - tween.easeOutSine(6 - timeIn.second * 2);
   else ctxfg.globalAlpha = 1 - tween.easeOutSine(timeOut.second * 1.5);
   if (timeIn.second >= 2.5 && tmps.customForeDraw != null) tmps.customForeDraw(ctxfg); //   自定义前景
-  if (timeIn.second >= 2.5 && main.filter != null) main.filter(ctxfg, timeBgm, nowTimeMS / 1e3); //   滤镜处理
+  if (timeIn.second >= 2.5 && main.filter != null) main.filter(ctxfg, timeSong, nowTimeMS / 1e3); //   滤镜处理
   if (checkFeedback.checked) hitFeedbackList.animate(); //   绘制打击特效0
   ctxfg.resetTransform();
 
@@ -1732,7 +1761,7 @@ function loopCanvas() {
   }
 
   // Apply post-processing shaders over UI/HUD (global shaders, or all shaders if "All shaders affect UI/HUD" is on)
-  effectManager.render(canvasfg, ctxfg, timeBgm, shaderAffectsUI.checked ? 'all' : 'global');
+  effectManager.render(canvasfg, ctxfg, timeSong, shaderAffectsUI.checked ? 'all' : 'global');
 }
 //   判定线函数，undefined/0:默认,1:非,2:恒成立
 function drawLine(bool: number, lineScale: number) {
@@ -1996,11 +2025,11 @@ function drawOurOwnBlockAreas() {
   }
 
   function drawField(ctx: CanvasRenderingContext2D, blockArea: any) {
-    const isActive = isBlockAreaActive(blockArea, timeChart);
-    const isPulsing = !isActive && isBlockAreaReady(blockArea, timeChart);
+    const isActive = isBlockAreaActive(blockArea, timeSong);
+    const isPulsing = !isActive && isBlockAreaReady(blockArea, timeSong);
     const fadesIn = blockArea.appearTime < blockArea.enableTime;
     const opacity = (!isActive && fadesIn)
-      ? Math.max(0, Math.min(1, (timeChart - blockArea.appearTime) / 0.5))
+      ? Math.max(0, Math.min(1, (timeSong - blockArea.appearTime) / 0.5))
       : 1.0;
     const width = blockArea.width;
     const height = blockArea.rawHeight ?? blockArea.height;
@@ -2018,7 +2047,7 @@ function drawOurOwnBlockAreas() {
       let g = 0;
       let b = 0;
       if (isPulsing) {
-        const pulseAlpha = ((Math.sin(timeChart * Math.PI * 4) + 1) / 2) * 0.35;
+        const pulseAlpha = ((Math.sin(timeSong * Math.PI * 4) + 1) / 2) * 0.35;
         const white = Math.min(255, 255 * (pulseAlpha / 0.45));
         r = Math.min(255, r + white);
         g = Math.min(255, white);
@@ -2047,14 +2076,14 @@ function drawOurOwnBlockAreas() {
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || blockArea.isSubtract) continue;
-    const isActive = isBlockAreaActive(blockArea, timeChart);
+    const isActive = isBlockAreaActive(blockArea, timeSong);
     if (!isActive) drawField(ourNormalFieldCtx!, blockArea);
     drawMask(ourNormalFieldMaskCtx!, blockArea);
   }
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || blockArea.isSubtract) continue;
-    const isActive = isBlockAreaActive(blockArea, timeChart);
+    const isActive = isBlockAreaActive(blockArea, timeSong);
     if (isActive) drawField(ourNormalFieldCtx!, blockArea);
   }
 
@@ -2062,14 +2091,14 @@ function drawOurOwnBlockAreas() {
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || !blockArea.isSubtract) continue;
-    const isActive = isBlockAreaActive(blockArea, timeChart);
+    const isActive = isBlockAreaActive(blockArea, timeSong);
     if (!isActive) drawField(ourSubtractFieldCtx!, blockArea);
     drawMask(ourSubtractFieldMaskCtx!, blockArea);
   }
   for (let i = 0; i < app.blockAreas.length; i++) {
     const blockArea = app.blockAreas[i];
     if (!blockArea.visible || !blockArea.isSubtract) continue;
-    const isActive = isBlockAreaActive(blockArea, timeChart);
+    const isActive = isBlockAreaActive(blockArea, timeSong);
     if (isActive) drawField(ourSubtractFieldCtx!, blockArea);
   }
 
@@ -2095,7 +2124,7 @@ function drawDisabledBlockZones() {
   if (app.blockAreas.length === 0) return;
   if (enableNoiseShader.checked) {
     const aspect = canvasfg.width / canvasfg.height;
-    noiseShaderRenderer.drawDisabled(ctxfg, aspect, app.blockAreas, timeChart, true);
+    noiseShaderRenderer.drawDisabled(ctxfg, aspect, app.blockAreas, timeSong, true);
   }
 }
 
@@ -2103,7 +2132,7 @@ function drawActiveBlockZones() {
   if (app.blockAreas.length === 0) return;
   if (enableNoiseShader.checked) {
     const aspect = canvasfg.width / canvasfg.height;
-    noiseShaderRenderer.drawActive(ctxfg, aspect, app.blockAreas, timeChart, true);
+    noiseShaderRenderer.drawActive(ctxfg, aspect, app.blockAreas, timeSong, true);
   } else {
     drawOurOwnBlockAreas();
   }
@@ -2387,6 +2416,7 @@ async function mainPlay(): Promise<void> {
     activeRawTouches.clear();
     blockedFingerIds.clear();
     noiseShaderRenderer.resetTouches();
+    blockAudio.reset();
     effectManager.reset();
     for (const callback of main.end.values()) await callback();
   }
@@ -2447,6 +2477,7 @@ async function mainPause() {
     audio.play(res.mute, { loop: true }); //   TODO: 重构
     blockedFingerIds.clear();
     noiseShaderRenderer.resetTouches();
+    blockAudio.suspend();
     emitter.emit('pause');
   } else {
     if (app.bgVideo != null) await playVideo(app.bgVideo, timeBgm * app.speed);

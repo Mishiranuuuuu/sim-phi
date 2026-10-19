@@ -555,6 +555,9 @@ export class Renderer {
       note.controlSkew = 0;
       note.seconds = note.time * beat32;
       note.holdSeconds = note.holdTime * beat32;
+      if (note.visibleTime != null && note.visibleTime < 75000) {
+        note.visibleTime /= this.speed;
+      }
       note.maxVisiblePos = getMaxVisiblePos(note.floorPosition);
       if (note.time < 1e9) {
         hitUpdate(note.seconds);
@@ -587,7 +590,7 @@ export class Renderer {
       line.scaleYVal = 1;
       const tempo = chartNew.bpmList?.length
         ? new RPETempo(chartNew.bpmList)
-        : new RPETempo([{ startTime: [0, 0, 1], bpm: line.bpm }]);
+        : new RPETempo([{ startTime: [0, 0, 1], bpm: line.bpm / this.speed }]); //   RPETempo works in song seconds (unscaled bpm)
       if (line.scaleXEvents?.length) {
         line.scaleXTrack = new RpeTrack(line.scaleXEvents, 'X', 1, { x: 0, y: 0 }, tempo);
       }
@@ -640,7 +643,7 @@ export class Renderer {
       blockArea.chartCenter = { x: 0, y: 0 };
       blockArea.chartSize = { x: 0, y: 0 };
       blockArea.chartRotation = 0;
-      aniUpdate(blockArea.disappearTime);
+      aniUpdate(blockArea.disappearTime / this.speed);
 
       this.blockAreas.push(blockArea);
     }
@@ -709,6 +712,8 @@ export class Renderer {
   }
   public updateByTime(time: number): void {
     if (!this.initialized) throw new Error('Not initialized');
+    //   RPETempo-based tracks and block areas are stored in song seconds (not scaled by playback speed)
+    const songTime = time * this.speed;
     for (const line of this.lines) {
       for (let i = line.disappearEventsIndex, len = line.judgeLineDisappearEvents.length; i < len; i++) {
         const evt = line.judgeLineDisappearEvents[i];
@@ -739,16 +744,16 @@ export class Renderer {
         break;
       }
       if (line.scaleXTrack) {
-        line.scaleXVal = line.scaleXTrack.sample(time)[0];
+        line.scaleXVal = line.scaleXTrack.sample(songTime)[0];
       }
       if (line.scaleYTrack) {
-        line.scaleYVal = line.scaleYTrack.sample(time)[0];
+        line.scaleYVal = line.scaleYTrack.sample(songTime)[0];
       }
       if (line.colorTrack) {
-        line.colorVal = line.colorTrack.sample(time);
+        line.colorVal = line.colorTrack.sample(songTime);
       }
       if (line.textTrack) {
-        line.textVal = line.textTrack.sample(time);
+        line.textVal = line.textTrack.sample(songTime);
       }
       for (let i = line.speedEventsIndex, len = line.speedEvents.length; i < len; i++) {
         const evt = line.speedEvents[i];
@@ -847,14 +852,14 @@ export class Renderer {
     const aspect = H > 0 ? W / H : 1;
     for (const blockArea of this.blockAreas) {
       if (blockArea.rpeArea?.isVisible) {
-        blockArea.visible = blockArea.rpeArea.isVisible(time);
+        blockArea.visible = blockArea.rpeArea.isVisible(songTime);
       } else {
-        blockArea.visible = time >= blockArea.appearTime && time < blockArea.disappearTime;
+        blockArea.visible = songTime >= blockArea.appearTime && songTime < blockArea.disappearTime;
       }
       if (!blockArea.visible) continue;
 
       const line = blockArea.lineIndex != null ? this.lines[blockArea.lineIndex] : undefined;
-      const tr = computeBlockAreaTransform(blockArea, time, aspect, line, W, H);
+      const tr = computeBlockAreaTransform(blockArea, songTime, aspect, line, W, H);
       const canvasPos = chartToCanvas(tr.center, aspect, W, H);
       const yScale = blockArea.rpeCanvas ? 1.5 / aspect : 1.0;
       const rot = (tr.rotation || 0) * Math.PI / 180;

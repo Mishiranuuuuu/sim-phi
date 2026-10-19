@@ -155,14 +155,22 @@ const audio = {
 };
 class AudioController {
   public gainNode: GainNode;
+  public filterNode: BiquadFilterNode;
   public constructor() {
     this.gainNode = null!;
+    this.filterNode = null!;
     audio.test(this.init.bind(this));
   }
   private init() {
     const gain = _actx.createGain();
-    gain.connect(_gain);
+    const filter = _actx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.Q.value = Math.SQRT1_2;
+    filter.frequency.value = Math.min(22000, _actx.sampleRate * 0.499);
+    gain.connect(filter);
+    filter.connect(_gain);
     this.gainNode = gain;
+    this.filterNode = filter;
   }
   public play(res: AudioBuffer, options: Partial<AudioParamOptions> = {}): () => AudioBufferSourceNode {
     const { loop = false, offset = 0, playbackrate = 1, interval = 0 } = options;
