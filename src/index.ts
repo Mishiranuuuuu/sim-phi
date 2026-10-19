@@ -259,6 +259,8 @@ const showPoint = new Checkbox('Show anchor point').appendBefore(resetCfg.contai
 const debugBlockArea = new Checkbox('Debug blockArea').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'debugBlockArea'));
 const debugBlockAreaText = new Checkbox('Show blockArea debug text').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'debugBlockAreaText'));
 const enableNoiseShader = new Checkbox('Noise field WebGL shader', true).appendBefore(resetCfg.container).hook(status.reg.bind(status, 'enableNoiseShader'));
+const shaderAffectsUI = new Checkbox('All shaders affect UI/HUD').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'shaderAffectsUI'));
+shaderAffectsUI.container.title = 'Force all post-processing shaders to affect the UI and HUD (by default only global shaders affect UI)';
 const showAcc = new Checkbox('Show Acc').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'showAcc'));
 const showStat = new Checkbox('Show statistics').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'showStat'));
 const lowRes = new Checkbox('Low resolution').appendBefore(resetCfg.container).hook(status.reg.bind(status, 'lowRes'));
@@ -1534,8 +1536,10 @@ function loopCanvas() {
   ctxfg.globalAlpha = 1;
   ctxfg.resetTransform();
 
-  // Apply post-processing shaders (Option B) before HUD elements
-  effectManager.render(canvasfg, ctxfg, timeBgm);
+  // Apply post-processing shaders before HUD elements (only non-global shaders when "All shaders affect UI/HUD" is off)
+  if (!shaderAffectsUI.checked) {
+    effectManager.render(canvasfg, ctxfg, timeBgm, 'non-global');
+  }
 
   const topTransY = lineScale * (timeIn.second < 0.67 ? tween.easeOutSine(timeIn.second * 1.5) - 1 : -tween.easeOutSine(timeOut.second * 1.5)) * 1.75;
   const bottomTransY = lineScale * (timeIn.second < 0.67 ? 1 - tween.easeOutSine(timeIn.second * 1.5) : tween.easeOutSine(timeOut.second * 1.5)) * 1.75;
@@ -1726,6 +1730,9 @@ function loopCanvas() {
   if (timeIn.second >= 2.5 && timeOut.second === 0) {
     drawActiveBlockZones();
   }
+
+  // Apply post-processing shaders over UI/HUD (global shaders, or all shaders if "All shaders affect UI/HUD" is on)
+  effectManager.render(canvasfg, ctxfg, timeBgm, shaderAffectsUI.checked ? 'all' : 'global');
 }
 //   判定线函数，undefined/0:默认,1:非,2:恒成立
 function drawLine(bool: number, lineScale: number) {
@@ -2111,23 +2118,43 @@ function drawNotes() {
 }
 function drawTap(note: Renderer.Note) {
   const HL = note.isMulti && app.multiHint;
-  const nsr = app.noteScaleRatio;
+  const size = Math.max(0, (note.size ?? 1) * (note.controlSize ?? 1));
+  if (size === 0) return;
+  const nsr = app.noteScaleRatio * size;
   if (!note.visible || note.scored && note.badTime == null) return;
-  ctxfg.setTransform(nsr * note.cosr, nsr * note.sinr, -nsr * note.sinr, nsr * note.cosr, note.offsetX, note.offsetY);
+  const skew = note.controlSkew || 0;
+  ctxfg.setTransform(
+    nsr * note.cosr,
+    nsr * note.sinr,
+    nsr * (skew * note.cosr - note.sinr),
+    nsr * (skew * note.sinr + note.cosr),
+    note.offsetX,
+    note.offsetY
+  );
   if (note.badTime == null) {
     ctxfg.globalAlpha = note.alpha || (note.showPoint && showPoint.checked ? 0.45 : 0);
     if (main.awawa) ctxfg.globalAlpha *= Math.max(1 + (timeChart - note.seconds) / 1.5, 0); //   过线前1.5s出现
     noteRender.note[HL ? 'TapHL' : 'Tap'].full(ctxfg);
   } else {
-    ctxfg.globalAlpha = 1 - clip((performance.now() - note.badTime) / 500);
+    ctxfg.globalAlpha = (1 - clip((performance.now() - note.badTime) / 500)) * (note.baseAlpha ?? 1);
     noteRender.note.TapBad.full(ctxfg);
   }
 }
 function drawDrag(note: Renderer.Note) {
   const HL = note.isMulti && app.multiHint;
-  const nsr = app.noteScaleRatio;
+  const size = Math.max(0, (note.size ?? 1) * (note.controlSize ?? 1));
+  if (size === 0) return;
+  const nsr = app.noteScaleRatio * size;
   if (!note.visible || note.scored && note.badTime == null) return;
-  ctxfg.setTransform(nsr * note.cosr, nsr * note.sinr, -nsr * note.sinr, nsr * note.cosr, note.offsetX, note.offsetY);
+  const skew = note.controlSkew || 0;
+  ctxfg.setTransform(
+    nsr * note.cosr,
+    nsr * note.sinr,
+    nsr * (skew * note.cosr - note.sinr),
+    nsr * (skew * note.sinr + note.cosr),
+    note.offsetX,
+    note.offsetY
+  );
   if (note.badTime == null) {
     ctxfg.globalAlpha = note.alpha || (note.showPoint && showPoint.checked ? 0.45 : 0);
     if (main.awawa) ctxfg.globalAlpha *= Math.max(1 + (timeChart - note.seconds) / 1.5, 0);
@@ -2138,11 +2165,21 @@ function drawDrag(note: Renderer.Note) {
 }
 function drawHold(note: Renderer.Note, seconds: number) {
   const HL = note.isMulti && app.multiHint;
-  const nsr = app.noteScaleRatio;
+  const size = Math.max(0, (note.size ?? 1) * (note.controlSize ?? 1));
+  if (size === 0) return;
+  const nsr = app.noteScaleRatio * size;
   if (!note.visible || note.seconds + note.holdSeconds < seconds) return; //   不绘制时空超界的Hold
   ctxfg.globalAlpha = note.alpha || (note.showPoint && showPoint.checked ? 0.45 : 0);
   if (main.awawa) ctxfg.globalAlpha *= Math.max(1 + (timeChart - note.seconds) / 1.5, 0);
-  ctxfg.setTransform(nsr * note.cosr, nsr * note.sinr, -nsr * note.sinr, nsr * note.cosr, note.offsetX, note.offsetY);
+  const skew = note.controlSkew || 0;
+  ctxfg.setTransform(
+    nsr * note.cosr,
+    nsr * note.sinr,
+    nsr * (skew * note.cosr - note.sinr),
+    nsr * (skew * note.sinr + note.cosr),
+    note.offsetX,
+    note.offsetY
+  );
   const baseLength = app.scaleY / nsr * note.speed * app.speed;
   const holdLength = baseLength * note.holdSeconds;
   if (note.seconds > seconds) {
@@ -2153,9 +2190,19 @@ function drawHold(note: Renderer.Note, seconds: number) {
 }
 function drawFlick(note: Renderer.Note) {
   const HL = note.isMulti && app.multiHint;
-  const nsr = app.noteScaleRatio;
+  const size = Math.max(0, (note.size ?? 1) * (note.controlSize ?? 1));
+  if (size === 0) return;
+  const nsr = app.noteScaleRatio * size;
   if (!note.visible || note.scored && note.badTime == null) return;
-  ctxfg.setTransform(nsr * note.cosr, nsr * note.sinr, -nsr * note.sinr, nsr * note.cosr, note.offsetX, note.offsetY);
+  const skew = note.controlSkew || 0;
+  ctxfg.setTransform(
+    nsr * note.cosr,
+    nsr * note.sinr,
+    nsr * (skew * note.cosr - note.sinr),
+    nsr * (skew * note.sinr + note.cosr),
+    note.offsetX,
+    note.offsetY
+  );
   if (note.badTime == null) {
     ctxfg.globalAlpha = note.alpha || (note.showPoint && showPoint.checked ? 0.45 : 0);
     if (main.awawa) ctxfg.globalAlpha *= Math.max(1 + (timeChart - note.seconds) / 1.5, 0);

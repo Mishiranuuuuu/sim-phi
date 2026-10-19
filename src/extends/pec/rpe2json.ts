@@ -301,6 +301,10 @@ interface NoteRPE1 {
   isAbove: boolean;
   isFake: boolean;
   isHidden: boolean;
+  size: number;
+  yOffset: number;
+  visibleTime: number;
+  alpha: number;
 }
 class LineRPE1 {
   public bpm: number;
@@ -323,8 +327,21 @@ class LineRPE1 {
     this.merged = false;
     if (!isNaN(bpm)) this.bpm = bpm;
   }
-  public pushNote(type: number, time: number, positionX: number, holdTime: number, speed: number, isAbove: boolean, isFake: boolean, isHide: boolean) {
-    this.notes.push({ type, time, positionX, holdTime, speed, isAbove, isFake, isHidden: isHide });
+  public pushNote(
+    type: number,
+    time: number,
+    positionX: number,
+    holdTime: number,
+    speed: number,
+    isAbove: boolean,
+    isFake: boolean,
+    isHide: boolean,
+    size = 1,
+    yOffset = 0,
+    visibleTime = 999999,
+    alpha = 255
+  ) {
+    this.notes.push({ type, time, positionX, holdTime, speed, isAbove, isFake, isHidden: isHide, size, yOffset, visibleTime, alpha });
   }
   public setId(id = NaN) {
     this.id = id;
@@ -384,13 +401,20 @@ class LineRPE1 {
       judgeLineMoveEvents: [] as JudgeLineEventPGS[],
       judgeLineRotateEvents: [] as JudgeLineEventPGS[],
       isBlockMarker: false,
+      isCover: 1,
+      bpmfactor: 1,
       attachUI: undefined as UIElementName | undefined,
       scaleXEvents: undefined as any[] | undefined,
       scaleYEvents: undefined as any[] | undefined,
       colorEvents: undefined as any[] | undefined,
       textEvents: undefined as any[] | undefined,
       anchor: undefined as [number, number] | undefined,
-      zOrder: undefined as number | undefined
+      zOrder: undefined as number | undefined,
+      posControl: undefined as any[] | undefined,
+      sizeControl: undefined as any[] | undefined,
+      alphaControl: undefined as any[] | undefined,
+      yControl: undefined as any[] | undefined,
+      skewControl: undefined as any[] | undefined
     };
     for (const i of this.moveEvents!) {
       result.judgeLineMoveEvents.push({
@@ -580,7 +604,11 @@ class LineRPE1 {
         holdTime: i.holdTime,
         speed: i.speed * speedFactor,
         floorPosition,
-        isFake: i.isFake
+        isFake: i.isFake,
+        size: i.size,
+        yOffset: i.yOffset,
+        visibleTime: i.visibleTime,
+        alpha: i.alpha
       };
       if (i.isHidden) {
         note.speed = 0;
@@ -628,6 +656,12 @@ interface JudgeLineRPE {
     scaleYEvents?: LineEventRPE[];
     colorEvents?: any[];
     textEvents?: any[];
+    inclineEvents?: any[];
+    posControl?: any[];
+    sizeControl?: any[];
+    alphaControl?: any[];
+    yControl?: any[];
+    skewControl?: any[];
   } | null;
   notes: NoteRPE[] | null;
   Group: number;
@@ -635,6 +669,11 @@ interface JudgeLineRPE {
   zOrder: number;
   bpmfactor: number;
   father: number;
+  posControl?: any[];
+  sizeControl?: any[];
+  alphaControl?: any[];
+  yControl?: any[];
+  skewControl?: any[];
 }
 interface JudgeLineRPEExtends extends JudgeLineRPE {
   LineId: number;
@@ -695,65 +734,74 @@ export function parse(pec: string, filename: string): {
   });
   for (const i of data.judgeLineList) {
     if (i.zOrder === undefined) i.zOrder = 0;
-    if (i.bpmfactor === undefined) i.bpmfactor = 1;
+    if (i.bpmfactor === undefined || !i.bpmfactor) i.bpmfactor = 1;
     if (i.father === undefined) i.father = -1;
-    if (i.isCover !== 1) warn(1, 'ImplementionWarning', `未兼容isCover=${i.isCover}(可能无法正常显示)\n位于${i.LineId}号判定线`);
-    if (i.bpmfactor !== 1) warn(1, 'ImplementionWarning', `未兼容bpmfactor=${i.bpmfactor}(可能无法正常显示)\n位于${i.LineId}号判定线`);
-    const lineRPE = new LineRPE1(bpmList.baseBpm);
+    const lineBpmList = i.bpmfactor === 1 ? bpmList : bpmList.scale(i.bpmfactor);
+    const lineRPE = new LineRPE1(lineBpmList.baseBpm);
     lineRPE.setId(i.LineId);
     if (i.notes) {
       for (const note of i.notes) {
         if (note.alpha === undefined) note.alpha = 255;
+        if (note.size === undefined) note.size = 1;
+        if (note.yOffset === undefined) note.yOffset = 0;
+        if (note.visibleTime === undefined) note.visibleTime = 999999;
         if (note.above !== 1 && note.above !== 2) warn(1, 'NoteSideWarning', `检测到非法方向:${note.above}(将被视为2)\n位于:"${JSON.stringify(note)}"`);
-        if (note.size !== 1) warn(1, 'ImplementionWarning', `未兼容size=${note.size}(可能无法正常显示)\n位于:"${JSON.stringify(note)}"`);
-        if (note.yOffset !== 0) warn(1, 'ImplementionWarning', `未兼容yOffset=${note.yOffset}(可能无法正常显示)\n位于:"${JSON.stringify(note)}"`);
-        // Both values are commonly used by RPE editors to mean "always
-        // visible".  The renderer's normal visibility calculation already
-        // handles that behavior.
-        if (note.visibleTime !== 99999 && note.visibleTime !== 999999) warn(1, 'ImplementionWarning', `未兼容visibleTime=${note.visibleTime}(可能无法正常显示)\n位于:"${JSON.stringify(note)}"`);
-        if (note.alpha !== 255 && note.alpha !== 0) warn(1, 'ImplementionWarning', `未兼容alpha=${note.alpha}(可能无法正常显示)\n位于:"${JSON.stringify(note)}"`);
         const type = [0, 1, 4, 2, 3].indexOf(note.type);
-        const time = bpmList.calc2(note.startTime);
-        const holdTime = bpmList.calc2(note.endTime) - time;
+        const time = lineBpmList.calc2(note.startTime);
+        const holdTime = lineBpmList.calc2(note.endTime) - time;
         const { speed } = note;
         const positionX = note.positionX / 75.375;
-        lineRPE.pushNote(type, time, positionX, holdTime, speed, note.above === 1, note.isFake !== 0, note.alpha === 0);
+        const yOffset = (note.yOffset || 0) / 75.375;
+        lineRPE.pushNote(
+          type,
+          time,
+          positionX,
+          holdTime,
+          speed,
+          note.above === 1,
+          note.isFake !== 0,
+          note.alpha === 0,
+          note.size,
+          yOffset,
+          note.visibleTime,
+          note.alpha
+        );
       }
     }
     for (const e of i.eventLayers) {
       if (!e) continue; // 有可能是null
       const layer = new EventLayer1();
       for (const j of e.moveXEvents || []) {
-        const startTime = bpmList.calc2(j.startTime);
-        const endTime = bpmList.calc2(j.endTime);
+        const startTime = lineBpmList.calc2(j.startTime);
+        const endTime = lineBpmList.calc2(j.endTime);
         const { fn, code } = getEasingFn(j, startTime, endTime);
         getWarning(code, j);
         layer.pushMoveXEvent(startTime, endTime, j.start, j.end, fn);
       }
       for (const j of e.moveYEvents || []) {
-        const startTime = bpmList.calc2(j.startTime);
-        const endTime = bpmList.calc2(j.endTime);
+        const startTime = lineBpmList.calc2(j.startTime);
+        const endTime = lineBpmList.calc2(j.endTime);
         const { fn, code } = getEasingFn(j, startTime, endTime);
         getWarning(code, j);
         layer.pushMoveYEvent(startTime, endTime, j.start, j.end, fn);
       }
       for (const j of e.rotateEvents || []) {
-        const startTime = bpmList.calc2(j.startTime);
-        const endTime = bpmList.calc2(j.endTime);
+        const startTime = lineBpmList.calc2(j.startTime);
+        const endTime = lineBpmList.calc2(j.endTime);
         const { fn, code } = getEasingFn(j, startTime, endTime);
         getWarning(code, j);
         layer.pushRotateEvent(startTime, endTime, j.start, j.end, fn);
       }
       for (const j of e.alphaEvents || []) {
-        const startTime = bpmList.calc2(j.startTime);
-        const endTime = bpmList.calc2(j.endTime);
+        const startTime = lineBpmList.calc2(j.startTime);
+        const endTime = lineBpmList.calc2(j.endTime);
         const { fn, code } = getEasingFn(j, startTime, endTime);
         getWarning(code, j);
         layer.pushAlphaEvent(startTime, endTime, j.start, j.end, fn);
       }
       for (const j of e.speedEvents || []) {
-        const startTime = bpmList.calc2(j.startTime);
-        const endTime = bpmList.calc2(j.endTime);
+        const startTime = lineBpmList.calc2(j.startTime);
+        const endTime = lineBpmList.calc2(j.endTime);
         layer.pushSpeedEvent(startTime, endTime, j.start, j.end);
       }
       lineRPE.eventLayers.push(layer);
@@ -770,6 +818,8 @@ export function parse(pec: string, filename: string): {
     const lineRPE = rawLine.judgeLineRPE; // TODO: 待优化
     const judgeLine = lineRPE.format({ onwarning: (msg: string) => warn(1, 'OtherWarning', `${msg}`) });
     judgeLine.zOrder = rawLine.zOrder;
+    judgeLine.isCover = Number(rawLine.isCover) === 0 ? 0 : 1;
+    judgeLine.bpmfactor = rawLine.bpmfactor ?? 1;
     const texture = String(rawLine.Texture).replace(/\0/g, '');
     const isMarker = /isSubtract[01]\.(png|jpg|jpeg|webp)$/i.test(texture);
     if (isMarker) {
@@ -803,6 +853,16 @@ export function parse(pec: string, filename: string): {
       const ay = Array.isArray(a) ? Number(a[1]) : Number(a.y);
       judgeLine.anchor = [Number.isFinite(ax) ? ax : 0.5, Number.isFinite(ay) ? ay : 0.5];
     }
+    const posControl = rawLine.posControl || rawLine.extended?.posControl;
+    if (posControl?.length) judgeLine.posControl = posControl;
+    const sizeControl = rawLine.sizeControl || rawLine.extended?.sizeControl;
+    if (sizeControl?.length) judgeLine.sizeControl = sizeControl;
+    const alphaControl = rawLine.alphaControl || rawLine.extended?.alphaControl;
+    if (alphaControl?.length) judgeLine.alphaControl = alphaControl;
+    const yControl = rawLine.yControl || rawLine.extended?.yControl;
+    if (yControl?.length) judgeLine.yControl = yControl;
+    const skewControl = rawLine.skewControl || rawLine.extended?.skewControl;
+    if (skewControl?.length) judgeLine.skewControl = skewControl;
     result.judgeLineList.push(judgeLine);
     result.numOfNotes! += judgeLine.numOfNotes;
   }

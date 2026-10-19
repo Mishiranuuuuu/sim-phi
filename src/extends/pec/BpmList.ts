@@ -31,4 +31,12 @@ export class BpmList {
   public calc2(time: BeatArray): number {
     return this.calc(time[0] + time[1] / time[2]);
   }
+  public scale(factor: number): BpmList {
+    if (factor === 1 || !factor) return this;
+    const scaled = new BpmList(this.baseBpm * factor);
+    for (const item of this.list) {
+      scaled.push(item.start, item.end, item.bpm * factor);
+    }
+    return scaled;
+  }
 }

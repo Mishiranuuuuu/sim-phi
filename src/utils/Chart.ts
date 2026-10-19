@@ -100,6 +100,10 @@ export class Note {
   public floorPosition: number;
   /** Decorative RPE notes: render them, but never include them in judgement. */
   public isFake: boolean;
+  public size: number;
+  public yOffset: number;
+  public visibleTime: number;
+  public alpha: number;
   public constructor(note: Record<string, unknown>) {
     this.type = Type.int(note.type);
     this.time = Type.int(note.time);
@@ -108,6 +112,10 @@ export class Note {
     this.speed = Type.float(note.speed);
     this.floorPosition = Type.float(note.floorPosition);
     this.isFake = Type.bool(note.isFake);
+    this.size = note.size != null ? Type.float(note.size) : 1;
+    this.yOffset = note.yOffset != null ? Type.float(note.yOffset) : 0;
+    this.visibleTime = note.visibleTime != null ? Type.float(note.visibleTime) : 999999;
+    this.alpha = note.alpha != null ? Type.float(note.alpha) : 255;
   }
 }
 export class JudgeLineEvent {
@@ -201,6 +209,13 @@ export class JudgeLine {
   public textEvents?: any[];
   public anchor?: [number, number];
   public zOrder?: number;
+  public isCover?: number;
+  public bpmfactor?: number;
+  public posControl?: any[];
+  public sizeControl?: any[];
+  public alphaControl?: any[];
+  public yControl?: any[];
+  public skewControl?: any[];
   public constructor(line: Record<string, unknown>) {
     this.numOfNotes = Type.int(line.numOfNotes);
     this.numOfNotesAbove = Type.int(line.numOfNotesAbove);
@@ -223,6 +238,13 @@ export class JudgeLine {
     if (line.textEvents) this.textEvents = line.textEvents as any[];
     if (line.anchor) this.anchor = line.anchor as [number, number];
     if (line.zOrder != null) this.zOrder = Type.int(line.zOrder);
+    if (line.isCover != null) this.isCover = Type.int(line.isCover);
+    if (line.bpmfactor != null) this.bpmfactor = Type.float(line.bpmfactor);
+    if (line.posControl) this.posControl = line.posControl as any[];
+    if (line.sizeControl) this.sizeControl = line.sizeControl as any[];
+    if (line.alphaControl) this.alphaControl = line.alphaControl as any[];
+    if (line.yControl) this.yControl = line.yControl as any[];
+    if (line.skewControl) this.skewControl = line.skewControl as any[];
   }
 }
 export class Chart {

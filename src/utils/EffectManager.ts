@@ -597,13 +597,23 @@ void main() {
     console.log(`Loaded ${parsed.length} post-processing effects from extra.json`);
   }
 
-  public render(canvasfg: HTMLCanvasElement, ctxfg: CanvasRenderingContext2D, time: number): void {
+  public render(
+    canvasfg: HTMLCanvasElement,
+    ctxfg: CanvasRenderingContext2D,
+    time: number,
+    filter: 'all' | 'non-global' | 'global' = 'all'
+  ): void {
     if (this.activeParsedEffects.length === 0 || !this.currentTempo) return;
     const { gl, glCanvas } = this;
     if (!gl || !glCanvas) return;
 
-    // Filter active effects
-    const active = this.activeParsedEffects.filter(e => time >= e.startSec && time <= e.endSec && e.program != null);
+    // Filter active effects by time and global/non-global scope
+    const active = this.activeParsedEffects.filter(e => {
+      if (time < e.startSec || time > e.endSec || e.program == null) return false;
+      if (filter === 'non-global') return !e.global;
+      if (filter === 'global') return !!e.global;
+      return true;
+    });
     if (active.length === 0) return;
 
     const width = canvasfg.width;
@@ -700,8 +710,13 @@ void main() {
 
     // Unbind and draw result back to 2D canvas
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    ctxfg.save();
+    ctxfg.resetTransform();
+    ctxfg.globalAlpha = 1.0;
+    ctxfg.globalCompositeOperation = 'source-over';
     ctxfg.clearRect(0, 0, width, height);
     ctxfg.drawImage(glCanvas, 0, 0);
+    ctxfg.restore();
   }
 
   public reset(): void {

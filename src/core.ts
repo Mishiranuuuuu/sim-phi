@@ -1,4 +1,5 @@
 import { RpeTrack, RpeColorTrack, RpeTextTrack, RPETempo } from './utils/rpeBlock';
+import { createControlTracks, type LineControlTracks } from './utils/rpeControl';
 interface SpeedEventExtends extends SpeedEvent {
   floorPosition: number;
   floorPosition2: number;
@@ -10,6 +11,11 @@ interface NoteExtends extends Note {
   offsetX: number;
   offsetY: number;
   alpha: number;
+  baseAlpha: number;
+  controlPos: number;
+  controlSize: number;
+  controlAlpha: number;
+  controlSkew: number;
   seconds: number;
   holdSeconds: number;
   line: JudgeLine;
@@ -75,6 +81,7 @@ interface JudgeLineExtends extends JudgeLine {
   colorTrack?: RpeColorTrack;
   textVal?: string;
   textTrack?: RpeTextTrack;
+  controls?: LineControlTracks;
 }
 interface BlockAreaExtends extends BlockArea {
   centerX: number;
@@ -538,10 +545,14 @@ export class Renderer {
     };
     //   向Renderer添加Note
     const addNote = (note: NoteExtends, beat32: number, line: JudgeLineExtends, noteId: number, isAbove: boolean) => {
-      console.log(beat32)
       note.offsetX = 0;
       note.offsetY = 0;
+      note.baseAlpha = note.alpha != null ? Math.max(0, Math.min(255, Number(note.alpha))) / 255 : 1;
       note.alpha = 0;
+      note.controlPos = 1;
+      note.controlSize = 1;
+      note.controlAlpha = 1;
+      note.controlSkew = 0;
       note.seconds = note.time * beat32;
       note.holdSeconds = note.holdTime * beat32;
       note.maxVisiblePos = getMaxVisiblePos(note.floorPosition);
@@ -591,6 +602,7 @@ export class Renderer {
         line.textTrack = new RpeTextTrack(line.textEvents, '', tempo);
         line.textVal = '';
       }
+      line.controls = createControlTracks(line);
       // line.speedEvents = normalizeSpeedEvent(line.speedEvents) as SpeedEventExtends[];
       // line.judgeLineDisappearEvents = normalizeLineEvent(line.judgeLineDisappearEvents) as LineEventExtends[];
       // line.judgeLineMoveEvents = normalizeLineEvent(line.judgeLineMoveEvents) as LineEventExtends[];
@@ -757,7 +769,7 @@ export class Renderer {
         if (i.badY == null) i.badY = getGoodY(i);
         return i.badY;
       };
-      const setAlpha = (i: NoteExtends, dx: number, dy: number) => {
+      const setAlpha = (i: NoteExtends, dx: number, dy: number, effBadY: number) => {
         i.projectX = line.offsetX + dx * i.cosr;
         i.offsetX = i.projectX + dy * i.sinr;
         i.projectY = line.offsetY + dx * i.sinr;
@@ -768,26 +780,66 @@ export class Renderer {
           // Not bad
         } else if (i.seconds > time) {
           i.showPoint = true;
-          const isHidden = i.maxVisiblePos < line.positionY2;
-          i.alpha = isHidden || this.enableVP && getGoodY(i) * 0.6 > 2 ? 0 : i.type === 3 && i.speed === 0 ? 0 : 1;
+          const isHidden = (line.isCover !== 0 && i.maxVisiblePos < line.positionY2) || (i.visibleTime < 75000 && (i.seconds - time > i.visibleTime));
+          const base = isHidden || (this.enableVP && (effBadY + (i.yOffset || 0)) * 0.6 > 2) || (i.type === 3 && i.speed === 0) ? 0 : 1;
+          i.alpha = base * i.baseAlpha * (i.controlAlpha ?? 1);
         } else {
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
           i.frameCount = i.frameCount == null ? 0 : i.frameCount + 1;
           if (i.type === 3) {
             i.showPoint = true;
-            i.alpha = i.speed === 0 ? 0 : i.status % 4 === 2 ? 0.45 : 1;
-          } else i.alpha = Math.max(1 - (time - i.seconds) / 0.16, 0); //   过线后0.16s消失
+            i.alpha = (i.speed === 0 ? 0 : i.status % 4 === 2 ? 0.45 : 1) * i.baseAlpha * (i.controlAlpha ?? 1);
+          } else {
+            const fadeDuration = (line.isCover === 0 || (i.line && i.line.isCover === 0)) ? 2.0 : 0.16;
+            i.alpha = Math.max(1 - (time - i.seconds) / fadeDuration, 0) * i.baseAlpha * (i.controlAlpha ?? 1);
+          }
         }
       };
+
+      const controls = line.controls;
+      const hasControls = controls && controls.hasAny;
+
       for (const note of line.notesAbove) {
         note.cosr = line.cosr;
         note.sinr = line.sinr;
-        setAlpha(note, this.scaleX * note.positionX, this.scaleY * getBadY(note));
+        let effBadY = getBadY(note);
+        if (hasControls) {
+          const distRpe = (effBadY + (note.yOffset || 0)) * 540;
+          if (controls.y) {
+            effBadY *= controls.y.sample(distRpe);
+          }
+          note.controlPos = controls.pos ? controls.pos.sample(distRpe) : 1;
+          note.controlSize = controls.size ? controls.size.sample(distRpe) : 1;
+          note.controlAlpha = controls.alpha ? controls.alpha.sample(distRpe) : 1;
+          note.controlSkew = controls.skew ? controls.skew.sample(distRpe) : 0;
+        } else {
+          note.controlPos = 1;
+          note.controlSize = 1;
+          note.controlAlpha = 1;
+          note.controlSkew = 0;
+        }
+        setAlpha(note, this.scaleX * (note.positionX * note.controlPos), this.scaleY * (effBadY + (note.yOffset || 0)), effBadY);
       }
       for (const note of line.notesBelow) {
         note.cosr = -line.cosr;
         note.sinr = -line.sinr;
-        setAlpha(note, -this.scaleX * note.positionX, this.scaleY * getBadY(note));
+        let effBadY = getBadY(note);
+        if (hasControls) {
+          const distRpe = (effBadY + (note.yOffset || 0)) * 540;
+          if (controls.y) {
+            effBadY *= controls.y.sample(distRpe);
+          }
+          note.controlPos = controls.pos ? controls.pos.sample(distRpe) : 1;
+          note.controlSize = controls.size ? controls.size.sample(distRpe) : 1;
+          note.controlAlpha = controls.alpha ? controls.alpha.sample(distRpe) : 1;
+          note.controlSkew = controls.skew ? controls.skew.sample(distRpe) : 0;
+        } else {
+          note.controlPos = 1;
+          note.controlSize = 1;
+          note.controlAlpha = 1;
+          note.controlSkew = 0;
+        }
+        setAlpha(note, -this.scaleX * (note.positionX * note.controlPos), this.scaleY * (effBadY + (note.yOffset || 0)), effBadY);
       }
     }
     const W = this.canvasfg.width;
