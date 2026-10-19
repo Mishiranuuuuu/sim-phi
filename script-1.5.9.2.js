@@ -1,2 +1,2 @@
-import{h as o}from"./index-CC8IEFVQ.js";export{o as hook};
+import{k as o}from"./index-YhssaKyQ.js";export{o as hook};
 //# sourceMappingURL=script-1.5.9.2.js.map
