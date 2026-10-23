@@ -39,6 +39,10 @@ export class NoiseShaderRenderer {
   // Touch tracking for hover dissolution
   private touches = new Map<number | string, { x: number; y: number; scale: number; startTime: number }>();
 
+  // Downscaled scene snapshot
+  private sceneSmall: HTMLCanvasElement | null = null;
+  private sceneSmallCtx: CanvasRenderingContext2D | null = null;
+
   // Width and height
   private width = 0;
   private height = 0;
@@ -464,7 +468,7 @@ export class NoiseShaderRenderer {
     this.resize(ctx.canvas.width, ctx.canvas.height);
 
     // Rasterize masks (disabled layer doesn't need active touches)
-    this.masks.render(this.width, this.height, aspect, zones, timeChart, []);
+    this.masks.render(this.width, this.height, aspect, zones, timeChart, [], blockAreas);
     this.uploadMasks();
 
     // Render WebGL Disabled layer (uLayer = 0)
@@ -535,9 +539,26 @@ export class NoiseShaderRenderer {
     this.resize(ctx.canvas.width, ctx.canvas.height);
 
     // Capture scene canvas BEFORE any HUD or text is rendered!
+    // The shader samples the snapshot on a 6px grid, so downscale 6x first (cheap on GPU-backed 2D canvas).
+    const sw = Math.max(1, Math.floor(this.width / 6));
+    const sh = Math.max(1, Math.floor(this.height / 6));
+    if (!this.sceneSmall) {
+      this.sceneSmall = document.createElement('canvas');
+      this.sceneSmallCtx = this.sceneSmall.getContext('2d');
+    }
+    if (this.sceneSmall.width !== sw || this.sceneSmall.height !== sh) {
+      this.sceneSmall.width = sw;
+      this.sceneSmall.height = sh;
+    }
+    const sctx = this.sceneSmallCtx;
+    if (sctx) {
+      sctx.imageSmoothingEnabled = true;
+      sctx.imageSmoothingQuality = 'low';
+      sctx.drawImage(ctx.canvas, 0, 0, this.width, this.height, 0, 0, sw, sh);
+    }
     gl.bindTexture(gl.TEXTURE_2D, this.sceneTex);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, ctx.canvas);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sctx ? this.sceneSmall : ctx.canvas);
 
     // Rasterize masks with touch dissolution
     const touchList: Array<{ x: number; y: number; scale: number }> = [];
@@ -545,7 +566,7 @@ export class NoiseShaderRenderer {
       if (t.scale > 0) touchList.push(t);
     }
 
-    this.masks.render(this.width, this.height, aspect, zones, timeChart, touchList);
+    this.masks.render(this.width, this.height, aspect, zones, timeChart, touchList, blockAreas);
     this.uploadMasks();
 
     // Render WebGL Active overlay (uLayer = 3)

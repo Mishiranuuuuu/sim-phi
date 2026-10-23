@@ -169,31 +169,29 @@ export class BlockMasks {
     this.horiz = new Uint8Array(size);
   }
 
-  private sampleNoise(u: number, v: number): number {
-    if (!this.displacePixels || this.displaceWidth === 0) return 0.5;
-    const w = this.displaceWidth;
-    const h = this.displaceHeight;
+  // Noise warp uses precomputed separable lookups (see render): same math as
+  // sampling the displace texture at (d*t + u*2.13, d*t + v*1.02) and
+  // (-d*t + u*2.13, d*t + v*1.02), then rotating by 45deg * 0.1.
 
-    let ru = ((u % 2) + 2) % 2;
-    if (ru > 1) ru = 2 - ru;
-    let rv = ((v % 2) + 2) % 2;
-    if (rv > 1) rv = 2 - rv;
+  // Frame cache: disabled and active passes share identical zone masks within a frame
+  private cacheKey: unknown = null;
+  private cacheTime = NaN;
+  private cacheW = 0;
+  private cacheH = 0;
+  private cacheAspect = 0;
+  private hoverDirty = false;
+  private ringRegion = { x0: 0, y0: 0, x1: 0, y1: 0, valid: false };
 
-    const x = Math.min(w - 1, Math.max(0, Math.floor(ru * w)));
-    const y = Math.min(h - 1, Math.max(0, Math.floor(rv * h)));
-    return this.displacePixels[(y * w + x) * 4] / 255.0;
-  }
+  // Warp lookup tables (separable)
+  private colA: Int32Array = new Int32Array(0);
+  private colB: Int32Array = new Int32Array(0);
+  private colU: Float32Array = new Float32Array(0);
 
-  private composeUv(u: number, v: number, time: number): [number, number] {
-    const d = 0.70710678;
-    const t = (time / 20.0) * 2.59;
-    const st0 = u * 2.13;
-    const st1 = v * 1.02;
-
-    const a = this.sampleNoise(d * t + st0, d * t + st1) - 0.5;
-    const b = this.sampleNoise(-d * t + st0, d * t + st1) - 0.5;
-
-    return [(d * a - b * d) * 0.1 + u, (d * a + b * d) * 0.1 + v];
+  private mirrorIndex(c: number, n: number): number {
+    let r = ((c % 2) + 2) % 2;
+    if (r > 1) r = 2 - r;
+    const i = Math.floor(r * n);
+    return i < 0 ? 0 : i > n - 1 ? n - 1 : i;
   }
 
   public render(
@@ -202,12 +200,32 @@ export class BlockMasks {
     aspect: number,
     zones: Zone[],
     time: number,
-    touches: Array<{ x: number; y: number; scale: number }>
+    touches: Array<{ x: number; y: number; scale: number }>,
+    cacheKey?: unknown
   ) {
     this.resize(canvasWidth, canvasHeight);
     const bw = this.width;
     const bh = this.height;
     const size = bw * bh;
+
+    if (
+      cacheKey !== undefined &&
+      this.cacheKey === cacheKey &&
+      this.cacheTime === time &&
+      this.cacheW === canvasWidth &&
+      this.cacheH === canvasHeight &&
+      this.cacheAspect === aspect
+    ) {
+      this.renderHover(canvasWidth, canvasHeight, aspect, touches);
+      return;
+    }
+    this.cacheKey = cacheKey === undefined ? null : cacheKey;
+    this.cacheTime = time;
+    this.cacheW = canvasWidth;
+    this.cacheH = canvasHeight;
+    this.cacheAspect = aspect;
+    this.hoverDirty = false;
+    this.ringRegion.valid = false;
 
     // Reset scratch planes
     this.activeNormal.fill(0);
@@ -298,133 +316,205 @@ export class BlockMasks {
       const x1 = Math.min(bw, maxX + padX + 1);
       const y1 = Math.min(bh, maxY + padY + 1);
 
+      const px = this.displacePixels;
+      const dw = this.displaceWidth;
+      const dh = this.displaceHeight;
+      const d = 0.70710678;
+      const t = (time / 20.0) * 2.59;
+      const dt = d * t;
+
+      if (this.colA.length < bw) {
+        this.colA = new Int32Array(bw);
+        this.colB = new Int32Array(bw);
+        this.colU = new Float32Array(bw);
+      }
+      const colA = this.colA;
+      const colB = this.colB;
+      const colU = this.colU;
+      const hasNoise = !!px && dw > 0;
+
+      if (hasNoise) {
+        for (let x = x0; x < x1; x++) {
+          const u = (x + 0.5) / bw;
+          const st0 = u * 2.13;
+          colU[x] = u;
+          colA[x] = this.mirrorIndex(dt + st0, dw) * 4;
+          colB[x] = this.mirrorIndex(-dt + st0, dw) * 4;
+        }
+      }
+
+      const rgba = this.rgba;
+      const k = d * 0.1 / 255.0;
       for (let y = y0; y < y1; y++) {
         const v = (y + 0.5) / bh;
         const rowOffset = y * bw;
+        const rowN = hasNoise ? this.mirrorIndex(dt + v * 1.02, dh) * dw * 4 : 0;
         for (let x = x0; x < x1; x++) {
-          const u = (x + 0.5) / bw;
-          const [wu, wv] = this.composeUv(u, v, time);
+          let wu = (x + 0.5) / bw;
+          let wv = v;
+          if (hasNoise) {
+            const a = px![rowN + colA[x]] - 127.5;
+            const b = px![rowN + colB[x]] - 127.5;
+            wu += (a - b) * k;
+            wv += (a + b) * k;
+          }
           if (wu < 0 || wu >= 1 || wv < 0 || wv >= 1) {
-            this.rgba[(rowOffset + x) * 4 + 0] = 0;
+            rgba[(rowOffset + x) * 4] = 0;
           } else {
-            const sx = Math.min(bw - 1, Math.max(0, Math.floor(wu * bw)));
-            const sy = Math.min(bh - 1, Math.max(0, Math.floor(wv * bh)));
-            this.rgba[(rowOffset + x) * 4 + 0] = rawActive[sy * bw + sx];
+            let sx = Math.floor(wu * bw);
+            let sy = Math.floor(wv * bh);
+            if (sx > bw - 1) sx = bw - 1;
+            if (sy > bh - 1) sy = bh - 1;
+            rgba[(rowOffset + x) * 4] = rawActive[sy * bw + sx];
           }
         }
       }
+
+      this.ringRegion.x0 = Math.max(0, x0 - 6);
+      this.ringRegion.y0 = Math.max(0, y0 - 6);
+      this.ringRegion.x1 = Math.min(bw, x1 + 6);
+      this.ringRegion.y1 = Math.min(bh, y1 + 6);
+      this.ringRegion.valid = true;
     }
 
-    // Disabled compose: normal - subtract (masked by !active)
-    for (let i = 0; i < size; i++) {
-      if (this.rgba[i * 4 + 0] > 0) {
-        this.rgba[i * 4 + 3] = 0;
-      } else {
-        const dNorm = this.disabledNormal[i];
-        const dSub = this.disabledSubtract[i];
-        const dVal = dSub > 0 ? 0 : dNorm;
-        this.rgba[i * 4 + 3] = dVal;
+    // Disabled compose (masked by !active) and Aux Mask: R=readyNormal, G=readySubtract, B=disabledCompose
+    {
+      const rgba = this.rgba;
+      const aux = this.auxRgba;
+      const dN = this.disabledNormal;
+      const dS = this.disabledSubtract;
+      const rN = this.readyNormal;
+      const rS = this.readySubtract;
+      for (let i = 0, j = 0; i < size; i++, j += 4) {
+        const dVal = rgba[j] > 0 ? 0 : (dS[i] > 0 ? 0 : dN[i]);
+        rgba[j + 3] = dVal;
+        aux[j] = rN[i];
+        aux[j + 1] = rS[i];
+        aux[j + 2] = dVal;
       }
-    }
-
-    // Populate Aux Mask: R=readyNormal, G=readySubtract, B=disabledCompose
-    for (let i = 0; i < size; i++) {
-      this.auxRgba[i * 4 + 0] = this.readyNormal[i];
-      this.auxRgba[i * 4 + 1] = this.readySubtract[i];
-      this.auxRgba[i * 4 + 2] = this.rgba[i * 4 + 3];
     }
 
     // Render Rings (Edge & Glow Dilation) on Active Compose
     this.renderRings();
 
-    // Render Touch Hover footprint into uAuxMasks.a
-    if (touches.length > 0) {
-      const radius = 0.25; // ~25% screen height
-      const rSq = radius * radius;
+    this.renderHover(canvasWidth, canvasHeight, aspect, touches);
+  }
 
-      for (let y = 0; y < bh; y++) {
-        const py = (y + 0.5) / bh;
+  /** Touch hover footprint into uAuxMasks.a, limited to each touch's bounds. */
+  private renderHover(
+    canvasWidth: number,
+    canvasHeight: number,
+    aspect: number,
+    touches: Array<{ x: number; y: number; scale: number }>
+  ) {
+    const bw = this.width;
+    const bh = this.height;
+    const aux = this.auxRgba;
+
+    if (this.hoverDirty) {
+      for (let j = 3, n = bw * bh * 4; j < n; j += 4) aux[j] = 0;
+      this.hoverDirty = false;
+    }
+    if (touches.length === 0) return;
+
+    const radius = 0.25; // ~25% screen height
+    const rSq = radius * radius;
+
+    for (const t of touches) {
+      if (t.scale <= 0) continue;
+      const cx = t.x / canvasWidth;
+      const cy = 1.0 - t.y / canvasHeight;
+      const rx = radius / aspect;
+      const xa = Math.max(0, Math.floor((cx - rx) * bw - 0.5));
+      const xb = Math.min(bw, Math.ceil((cx + rx) * bw + 0.5));
+      const ya = Math.max(0, Math.floor((cy - radius) * bh - 0.5));
+      const yb = Math.min(bh, Math.ceil((cy + radius) * bh + 0.5));
+
+      for (let y = ya; y < yb; y++) {
+        const dy = (y + 0.5) / bh - cy;
+        const dy2 = dy * dy;
+        if (dy2 >= rSq) continue;
         const rowOffset = y * bw;
-
-        for (let x = 0; x < bw; x++) {
-          const px = (x + 0.5) / bw;
-          let maxHover = 0;
-
-          for (const t of touches) {
-            if (t.scale <= 0) continue;
-            const dx = (px - t.x / canvasWidth) * aspect;
-            const dy = py - (1.0 - t.y / canvasHeight);
-            const distSq = dx * dx + dy * dy;
-
-            if (distSq < rSq) {
-              const d = Math.sqrt(distSq);
-              const falloff = Math.max(0, 1.0 - d / radius);
-              const val = falloff * falloff * (3 - 2 * falloff) * t.scale;
-              if (val > maxHover) maxHover = val;
-            }
+        for (let x = xa; x < xb; x++) {
+          const dx = ((x + 0.5) / bw - cx) * aspect;
+          const distSq = dx * dx + dy2;
+          if (distSq < rSq) {
+            const falloff = Math.max(0, 1.0 - Math.sqrt(distSq) / radius);
+            const val = Math.round(falloff * falloff * (3 - 2 * falloff) * t.scale * 255);
+            const idx = (rowOffset + x) * 4 + 3;
+            if (val > aux[idx]) aux[idx] = val;
           }
-
-          this.auxRgba[(rowOffset + x) * 4 + 3] = Math.round(maxHover * 255);
         }
       }
+      this.hoverDirty = true;
     }
   }
 
   private renderRings() {
     const w = this.width;
-    const h = this.height;
+    const reg = this.ringRegion;
+    // No active pixels: edge and glow stay zero (buffer already cleared)
+    if (!reg.valid) return;
+    const { x0, y0, x1, y1 } = reg;
+    const rgba = this.rgba;
+    let ping = this.ping;
+    let pong = this.pong;
+    const horiz = this.horiz;
 
-    // Copy initial active mask to ping buffer
-    for (let i = 0; i < w * h; i++) {
-      this.ping[i] = this.rgba[i * 4 + 0];
+    for (let y = y0; y < y1; y++) {
+      const row = y * w;
+      for (let x = x0; x < x1; x++) ping[row + x] = rgba[(row + x) * 4];
     }
 
     for (let pass = 0; pass < GLOW_WEIGHTS.length; pass++) {
       const weight = GLOW_WEIGHTS[pass];
       if (weight < 0.01) break;
 
-      // Fast separable 3x3 max filter
-      // 1. Horizontal pass
-      for (let y = 0; y < h; y++) {
+      // Separable 3x3 max filter (clamped to the active region; outside is empty)
+      for (let y = y0; y < y1; y++) {
         const row = y * w;
-        this.horiz[row] = Math.max(this.ping[row], this.ping[row + Math.min(w - 1, 1)]);
-        for (let x = 1; x < w - 1; x++) {
-          this.horiz[row + x] = Math.max(this.ping[row + x - 1], this.ping[row + x], this.ping[row + x + 1]);
-        }
-        if (w > 1) {
-          this.horiz[row + w - 1] = Math.max(this.ping[row + w - 1], this.ping[row + w - 2]);
+        for (let x = x0; x < x1; x++) {
+          const l = x > x0 ? ping[row + x - 1] : ping[row + x];
+          const r = x < x1 - 1 ? ping[row + x + 1] : ping[row + x];
+          const c = ping[row + x];
+          horiz[row + x] = l > c ? (l > r ? l : r) : (c > r ? c : r);
         }
       }
 
-      // 2. Vertical pass & accumulate Edge + Glow
-      for (let y = 0; y < h; y++) {
-        const above = Math.max(0, y - 1) * w;
+      for (let y = y0; y < y1; y++) {
+        const above = (y > y0 ? y - 1 : y) * w;
         const current = y * w;
-        const below = Math.min(h - 1, y + 1) * w;
+        const below = (y < y1 - 1 ? y + 1 : y) * w;
 
-        for (let x = 0; x < w; x++) {
-          const maximum = Math.max(this.horiz[above + x], this.horiz[current + x], this.horiz[below + x]);
-          this.pong[current + x] = maximum;
+        for (let x = x0; x < x1; x++) {
+          const a = horiz[above + x];
+          const b = horiz[current + x];
+          const c = horiz[below + x];
+          const maximum = a > b ? (a > c ? a : c) : (b > c ? b : c);
+          pong[current + x] = maximum;
 
-          const delta = maximum - this.ping[current + x];
+          const delta = maximum - ping[current + x];
           const dst = (current + x) * 4;
 
           if (pass === 0) {
-            this.rgba[dst + 1] = delta; // Edge channel
+            rgba[dst + 1] = delta; // Edge channel
           }
 
-          if (delta > 0 && this.rgba[dst + 0] < 255) {
-            const outside = 1.0 - this.rgba[dst + 0] / 255.0;
+          if (delta > 0 && rgba[dst] < 255) {
+            const outside = 1.0 - rgba[dst] / 255.0;
             const glowDelta = weight * (outside * (delta / 255.0)) * 255.0;
-            this.rgba[dst + 2] = Math.min(255, this.rgba[dst + 2] + Math.round(glowDelta));
+            const g = rgba[dst + 2] + Math.round(glowDelta);
+            rgba[dst + 2] = g > 255 ? 255 : g;
           }
         }
       }
 
-      // Swap ping and pong
-      const tmp = this.ping;
-      this.ping = this.pong;
-      this.pong = tmp;
+      const tmp = ping;
+      ping = pong;
+      pong = tmp;
     }
+
+    this.ping = ping;
+    this.pong = pong;
   }
 }
