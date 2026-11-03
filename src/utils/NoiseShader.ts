@@ -446,7 +446,8 @@ export class NoiseShaderRenderer {
     aspect: number,
     blockAreas: any[],
     timeChart: number,
-    enabledShader: boolean
+    enabledShader: boolean,
+    ignoreTripleInversion = false
   ) {
     if (blockAreas.length === 0) return;
 
@@ -460,7 +461,7 @@ export class NoiseShaderRenderer {
     if (!hasDisabled) return;
 
     if (!enabledShader || !this.gl || !this.mainProgram) {
-      drawBlockSimple(ctx, aspect, zones, true);
+      drawBlockSimple(ctx, aspect, zones, true, ignoreTripleInversion);
       return;
     }
 
@@ -468,7 +469,7 @@ export class NoiseShaderRenderer {
     this.resize(ctx.canvas.width, ctx.canvas.height);
 
     // Rasterize masks (disabled layer doesn't need active touches)
-    this.masks.render(this.width, this.height, aspect, zones, timeChart, [], blockAreas);
+    this.masks.render(this.width, this.height, aspect, zones, timeChart, [], blockAreas, ignoreTripleInversion);
     this.uploadMasks();
 
     // Render WebGL Disabled layer (uLayer = 0)
@@ -510,7 +511,8 @@ export class NoiseShaderRenderer {
     aspect: number,
     blockAreas: any[],
     timeChart: number,
-    enabledShader: boolean
+    enabledShader: boolean,
+    ignoreTripleInversion = false
   ) {
     if (blockAreas.length === 0) return;
 
@@ -531,7 +533,7 @@ export class NoiseShaderRenderer {
     if (!hasActive && !hasReady && !hoverActive) return;
 
     if (!enabledShader || !this.gl || !this.mainProgram) {
-      drawBlockSimple(ctx, aspect, zones, false);
+      drawBlockSimple(ctx, aspect, zones, false, ignoreTripleInversion);
       return;
     }
 
@@ -566,7 +568,7 @@ export class NoiseShaderRenderer {
       if (t.scale > 0) touchList.push(t);
     }
 
-    this.masks.render(this.width, this.height, aspect, zones, timeChart, touchList, blockAreas);
+    this.masks.render(this.width, this.height, aspect, zones, timeChart, touchList, blockAreas, ignoreTripleInversion);
     this.uploadMasks();
 
     // Render WebGL Active overlay (uLayer = 3)

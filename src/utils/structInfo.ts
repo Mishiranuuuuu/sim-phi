@@ -85,6 +85,10 @@ export function structLineData(entries: Record<string, string | null>[], path: s
       const v = parseFloat(entry.UseLineScale);
       if (isFinite(v)) data.useLineScale = Boolean(v);
     }
+    if (entry.RpeTexture != null) {
+      const v = parseFloat(entry.RpeTexture);
+      if (isFinite(v)) data.rpeTexture = Boolean(v);
+    }
     result.push(data);
     if (path) {
       data.chart = `${path}/${data.chart}`;

@@ -159,6 +159,7 @@ interface ChartLineData {
   useBackgroundDim?: boolean;
   useLineColor?: boolean;
   useLineScale?: boolean;
+  rpeTexture?: boolean;
 }
 interface ChartInfoData {
   chart: string;

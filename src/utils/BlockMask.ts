@@ -115,7 +115,8 @@ export class BlockMasks {
   private activeNormal: Uint8Array = new Uint8Array(0);
   private activeSubtract: Uint8Array = new Uint8Array(0);
   private disabledNormal: Uint8Array = new Uint8Array(0);
-  private disabledSubtract: Uint8Array = new Uint8Array(0);
+  private disabledSubtractCount: Uint8Array = new Uint8Array(0);
+  private disabledSubtractOpacity: Uint16Array = new Uint16Array(0);
   private readyNormal: Uint8Array = new Uint8Array(0);
   private readySubtract: Uint8Array = new Uint8Array(0);
 
@@ -160,7 +161,8 @@ export class BlockMasks {
     this.activeNormal = new Uint8Array(size);
     this.activeSubtract = new Uint8Array(size);
     this.disabledNormal = new Uint8Array(size);
-    this.disabledSubtract = new Uint8Array(size);
+    this.disabledSubtractCount = new Uint8Array(size);
+    this.disabledSubtractOpacity = new Uint16Array(size);
     this.readyNormal = new Uint8Array(size);
     this.readySubtract = new Uint8Array(size);
 
@@ -179,6 +181,7 @@ export class BlockMasks {
   private cacheW = 0;
   private cacheH = 0;
   private cacheAspect = 0;
+  private cacheIgnoreTriple = false;
   private hoverDirty = false;
   private ringRegion = { x0: 0, y0: 0, x1: 0, y1: 0, valid: false };
 
@@ -201,7 +204,8 @@ export class BlockMasks {
     zones: Zone[],
     time: number,
     touches: Array<{ x: number; y: number; scale: number }>,
-    cacheKey?: unknown
+    cacheKey?: unknown,
+    ignoreTripleInversion = false
   ) {
     this.resize(canvasWidth, canvasHeight);
     const bw = this.width;
@@ -214,7 +218,8 @@ export class BlockMasks {
       this.cacheTime === time &&
       this.cacheW === canvasWidth &&
       this.cacheH === canvasHeight &&
-      this.cacheAspect === aspect
+      this.cacheAspect === aspect &&
+      this.cacheIgnoreTriple === ignoreTripleInversion
     ) {
       this.renderHover(canvasWidth, canvasHeight, aspect, touches);
       return;
@@ -224,6 +229,7 @@ export class BlockMasks {
     this.cacheW = canvasWidth;
     this.cacheH = canvasHeight;
     this.cacheAspect = aspect;
+    this.cacheIgnoreTriple = ignoreTripleInversion;
     this.hoverDirty = false;
     this.ringRegion.valid = false;
 
@@ -231,7 +237,8 @@ export class BlockMasks {
     this.activeNormal.fill(0);
     this.activeSubtract.fill(0);
     this.disabledNormal.fill(0);
-    this.disabledSubtract.fill(0);
+    this.disabledSubtractCount.fill(0);
+    this.disabledSubtractOpacity.fill(0);
     this.readyNormal.fill(0);
     this.readySubtract.fill(0);
     this.rgba.fill(0);
@@ -245,7 +252,10 @@ export class BlockMasks {
         if (z.invert) {
           rasterRows(bw, bh, aspect, z, (y, first, last) => {
             const rowOffset = y * bw;
-            for (let x = first; x < last; x++) this.activeSubtract[rowOffset + x] = 255;
+            for (let x = first; x < last; x++) {
+              const idx = rowOffset + x;
+              if (this.activeSubtract[idx] < 255) this.activeSubtract[idx]++;
+            }
           });
         } else {
           rasterRows(bw, bh, aspect, z, (y, first, last) => {
@@ -255,23 +265,36 @@ export class BlockMasks {
         }
       } else {
         const opByte = Math.round(z.opacity * 255);
-        if (z.invert) {
-          rasterRows(bw, bh, aspect, z, (y, first, last) => {
-            const rowOffset = y * bw;
-            for (let x = first; x < last; x++) this.disabledSubtract[rowOffset + x] = opByte;
-          });
-        } else {
-          rasterRows(bw, bh, aspect, z, (y, first, last) => {
-            const rowOffset = y * bw;
-            for (let x = first; x < last; x++) this.disabledNormal[rowOffset + x] = opByte;
-          });
+        if (opByte > 0) {
+          if (z.invert) {
+            rasterRows(bw, bh, aspect, z, (y, first, last) => {
+              const rowOffset = y * bw;
+              for (let x = first; x < last; x++) {
+                const idx = rowOffset + x;
+                if (this.disabledSubtractCount[idx] < 255) this.disabledSubtractCount[idx]++;
+                this.disabledSubtractOpacity[idx] += opByte;
+              }
+            });
+          } else {
+            rasterRows(bw, bh, aspect, z, (y, first, last) => {
+              const rowOffset = y * bw;
+              for (let x = first; x < last; x++) {
+                const idx = rowOffset + x;
+                const sum = this.disabledNormal[idx] + opByte;
+                this.disabledNormal[idx] = sum > 255 ? 255 : sum;
+              }
+            });
+          }
         }
 
         if (z.ready) {
           if (z.invert) {
             rasterRows(bw, bh, aspect, z, (y, first, last) => {
               const rowOffset = y * bw;
-              for (let x = first; x < last; x++) this.readySubtract[rowOffset + x] = 255;
+              for (let x = first; x < last; x++) {
+                const idx = rowOffset + x;
+                if (this.readySubtract[idx] < 255) this.readySubtract[idx]++;
+              }
             });
           } else {
             rasterRows(bw, bh, aspect, z, (y, first, last) => {
@@ -295,7 +318,9 @@ export class BlockMasks {
       const rowOffset = y * bw;
       for (let x = 0; x < bw; x++) {
         const i = rowOffset + x;
-        const isAct = (this.activeNormal[i] > 0) !== (this.activeSubtract[i] > 0);
+        const subCnt = this.activeSubtract[i];
+        const subAct = ignoreTripleInversion ? subCnt === 1 : (subCnt & 1) === 1;
+        const isAct = (this.activeNormal[i] > 0) !== subAct;
         const val = isAct ? 255 : 0;
         rawActive[i] = val;
         if (val > 0) {
@@ -382,14 +407,30 @@ export class BlockMasks {
       const rgba = this.rgba;
       const aux = this.auxRgba;
       const dN = this.disabledNormal;
-      const dS = this.disabledSubtract;
+      const dSCnt = this.disabledSubtractCount;
+      const dSOp = this.disabledSubtractOpacity;
       const rN = this.readyNormal;
       const rS = this.readySubtract;
       for (let i = 0, j = 0; i < size; i++, j += 4) {
-        const dVal = rgba[j] > 0 ? 0 : (dS[i] > 0 ? 0 : dN[i]);
+        let dVal = 0;
+        if (rgba[j] === 0) {
+          const subCnt = dSCnt[i];
+          if (subCnt === 0) {
+            dVal = dN[i];
+          } else {
+            const inverted = ignoreTripleInversion ? subCnt === 1 : (subCnt & 1) === 1;
+            const green = Math.min(1, (dSOp[i] / 255) * 0.1);
+            const t = Math.max(0, Math.min(1, (green - 0.2) * -10));
+            const r = (inverted ? 1 : 0) + t * t * (3 - 2 * t);
+            const inverse = Math.max(0, Math.min(1, r)) * Math.max(0, Math.min(1, green * r * 10));
+            dVal = Math.round(Math.abs(dN[i] / 255 - inverse) * 255);
+          }
+        }
         rgba[j + 3] = dVal;
         aux[j] = rN[i];
-        aux[j + 1] = rS[i];
+        const rSubCnt = rS[i];
+        const rSubAct = ignoreTripleInversion ? rSubCnt === 1 : (rSubCnt & 1) === 1;
+        aux[j + 1] = rSubAct ? 255 : 0;
         aux[j + 2] = dVal;
       }
     }

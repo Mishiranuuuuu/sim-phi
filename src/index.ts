@@ -1627,7 +1627,7 @@ function loopCanvas() {
   // 2. 绘制Pause图标 (Pause, UIElement 1)
   if (app.chart?.attachUIList?.pause != null) {
     const pauseX = lineScale * 0.75;
-    const pauseY = lineScale * 1.35;
+    const pauseY = lineScale * 1.05;
     const pw = lineScale * 0.18;
     const ph = lineScale * 0.6;
     withAttachedUI('pause', pauseX, pauseY + topTransY, (_color, colorStr) => {
@@ -1769,6 +1769,7 @@ function drawLine(bool: number, lineScale: number) {
   for (const line of app.lineRenderOrder) {
     if ((line as any).isBlockMarker) continue;
     if (bool ^ Number(line.imageD) && timeOut.second < 0.67) {
+      if (line.alpha <= 0) continue;
       ctxfg.globalAlpha = line.alpha;
       ctxfg.setTransform(line.cosr * tw, line.sinr, -line.sinr * tw, line.cosr, app.wlen + (line.offsetX - app.wlen) * tw, line.offsetY); // Hiahiah
 
@@ -1840,22 +1841,42 @@ function drawLine(bool: number, lineScale: number) {
         continue;
       }
 
-      const imgS = (line.imageU ? lineScale * 18.75 : canvasfg.height) * line.imageS / 1080;
-      const imgW = imgS * line.imageW * line.imageA * (line.scaleXVal ?? 1);
-      const imgH = imgS * line.imageH * (line.scaleYVal ?? 1);
-      const img = line.imageL[line.imageC && lineColor.checked ? stat.lineStatus : 0] || line.imageL[0];
+      const scaleX = line.scaleXVal ?? 1;
+      const scaleY = line.scaleYVal ?? 1;
+      if (scaleX === 0 || scaleY === 0) continue;
+      let baseW: number;
+      let baseH: number;
+      if (line.imageR) {
+        baseW = (canvasfg.width / 1350) * line.imageW * line.imageS * line.imageA;
+        baseH = (canvasfg.height / 900) * line.imageH * line.imageS;
+      } else {
+        const imgS = (line.imageU ? lineScale * 18.75 : canvasfg.height) * line.imageS / 1080;
+        baseW = imgS * line.imageW * line.imageA;
+        baseH = imgS * line.imageH;
+      }
+      const anchor = line.anchor;
+      const anchorX = anchor ? (Array.isArray(anchor) ? Number(anchor[0]) : Number((anchor as any).x)) : 0.5;
+      const anchorY = anchor ? (Array.isArray(anchor) ? Number(anchor[1]) : Number((anchor as any).y)) : 0.5;
+      const safeAnchorX = isFinite(anchorX) ? anchorX : 0.5;
+      const safeAnchorY = isFinite(anchorY) ? anchorY : 0.5;
+      const drawX = -safeAnchorX * baseW;
+      const drawY = -safeAnchorY * baseH;
+      const isDefaultLine = !line.imageL || line.imageL[0] === res.JudgeLine;
+      const img = line.imageL[isDefaultLine && line.imageC && lineColor.checked ? stat.lineStatus : 0] || line.imageL[0];
+      ctxfg.save();
+      ctxfg.scale(scaleX, scaleY);
       if (line.colorVal) {
         const [r, g, b] = line.colorVal;
-        const isDefaultLine = !line.imageL || line.imageL[0] === res.JudgeLine;
         if (isDefaultLine) {
           ctxfg.fillStyle = `rgb(${r},${g},${b})`;
-          ctxfg.fillRect(-imgW / 2, -imgH / 2, imgW, imgH);
+          ctxfg.fillRect(drawX, drawY, baseW, baseH);
         } else if (img) {
-          drawTintedImage(ctxfg, img, -imgW / 2, -imgH / 2, imgW, imgH, r, g, b);
+          drawTintedImage(ctxfg, img, drawX, drawY, baseW, baseH, r, g, b);
         }
       } else if (img) {
-        ctxfg.drawImage(img, -imgW / 2, -imgH / 2, imgW, imgH);
+        ctxfg.drawImage(img, drawX, drawY, baseW, baseH);
       }
+      ctxfg.restore();
     }
   }
   ctxfg.globalAlpha = 1;
@@ -2124,7 +2145,7 @@ function drawDisabledBlockZones() {
   if (app.blockAreas.length === 0) return;
   if (enableNoiseShader.checked) {
     const aspect = canvasfg.width / canvasfg.height;
-    noiseShaderRenderer.drawDisabled(ctxfg, aspect, app.blockAreas, timeSong, true);
+    noiseShaderRenderer.drawDisabled(ctxfg, aspect, app.blockAreas, timeSong, true, !!app.chart?.ignoreTripleInversion);
   }
 }
 
@@ -2132,7 +2153,7 @@ function drawActiveBlockZones() {
   if (app.blockAreas.length === 0) return;
   if (enableNoiseShader.checked) {
     const aspect = canvasfg.width / canvasfg.height;
-    noiseShaderRenderer.drawActive(ctxfg, aspect, app.blockAreas, timeSong, true);
+    noiseShaderRenderer.drawActive(ctxfg, aspect, app.blockAreas, timeSong, true, !!app.chart?.ignoreTripleInversion);
   } else {
     drawOurOwnBlockAreas();
   }
@@ -2240,36 +2261,6 @@ function drawFlick(note: Renderer.Note) {
     // Nothing to do
   }
 }
-const lineImages = new Map() as Map<ImageBitmap, LineImage>;
-class LineImage {
-  public image: ImageBitmap;
-  public imageFC: ImageBitmap | null;
-  public imageAP: null; // ImageBitmap | null;
-  public imageMP: ImageBitmap | null;
-  public constructor(image: ImageBitmap) {
-    this.image = image;
-    this.imageFC = null;
-    this.imageAP = null;
-    this.imageMP = null;
-  }
-  public async getFC() {
-    if (this.imageFC == null) this.imageFC = await imgShader(this.image, '#a2eeff');
-    return this.imageFC;
-  }
-  public async getAP() {
-    /* if (this.imageAP == null) */ this.imageAP = await Promise.resolve(null); // imgShader(this.image, '#a3ffac');
-    return this.imageAP;
-  }
-  public async getMP() {
-    if (this.imageMP == null) this.imageMP = await imgShader(this.image, '#feffa9');
-    return this.imageMP;
-  }
-}
-const updateLineImage = (image: ImageBitmap) => {
-  const lineImage = lineImages.get(image) || new LineImage(image);
-  if (!lineImages.has(image)) lineImages.set(image, lineImage);
-  return lineImage;
-};
 //   rgba数组(0-1)转十六进制
 // function rgba2hex(...rgba:number[]) {
 //   return '#' + rgba.map(i => ('00' + Math.round(Number(i) * 255 || 0).toString(16)).slice(-2)).join('');
@@ -2383,7 +2374,7 @@ async function mainPlay(): Promise<void> {
     const format = chartsFormat.get(selectchart.value)!;
     stat.level = levelInfoHandler.getLevelNumber();
     if (app.chart != null) stat.reset(app.chart.numOfNotes, md5, format, selectspeed.value);
-    await loadLineData({ onwarn: sendWarning });
+    loadLineData({ onwarn: sendWarning });
     effectManager.setChart(selectchart.value, (charts.get(selectchart.value) as any)?.bpmList);
     duration0 = app.duration / app.speed;
     isInEnd = false;
@@ -2421,7 +2412,7 @@ async function mainPlay(): Promise<void> {
     for (const callback of main.end.values()) await callback();
   }
 }
-async function loadLineData({
+function loadLineData({
   onwarn = (_: string) => { }
 } = {}) {
   for (const line of app.lines) {
@@ -2433,6 +2424,7 @@ async function loadLineData({
     line.imageD = false;
     line.imageC = true;
     line.imageU = true;
+    line.imageR = false;
   }
   for (const data of chartLineDataList) {
     if (selectchart.value === data.chart) {
@@ -2446,22 +2438,32 @@ async function loadLineData({
         continue;
       }
       let image = data.image == null ? null : bgs.get(data.image)?.base;
+      if (!image && data.image != null) {
+        const lower = data.image.toLowerCase();
+        for (const [key, val] of bgs) {
+          if (key.toLowerCase() === lower) {
+            image = val.base;
+            break;
+          }
+        }
+      }
       if (!image) {
         if (data.image != null) onwarn(`Image does not exist: ${data.image}`);
         image = res.NoImageBlack;
       }
       line.imageW = image.width;
       line.imageH = image.height;
-      const lineImage = updateLineImage(image);
-      line.imageL = await Promise.all([image, lineImage.getMP(), lineImage.getAP(), lineImage.getFC()]);
+      line.imageL = [image, image, null, image];
+      line.imageC = false;
+      line.imageR = Boolean(data.rpeTexture);
       if (data.scaleOld != null) { // Legacy
         line.imageS = Math.abs(data.scaleOld) * 1080 / image.height;
         line.imageU = data.scaleOld > 0;
+        line.imageR = false;
       }
       if (data.scale != null) line.imageS = data.scale;
       if (data.aspect != null) line.imageA = data.aspect;
       if (data.useBackgroundDim != null) line.imageD = data.useBackgroundDim;
-      if (data.useLineColor != null) line.imageC = data.useLineColor;
       if (data.useLineScale != null) line.imageU = data.useLineScale;
     }
   }

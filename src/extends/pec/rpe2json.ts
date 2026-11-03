@@ -709,20 +709,18 @@ export function parse(pec: string, filename: string): {
   const line: Record<string, string>[] = [];
   data.judgeLineList.forEach((i: JudgeLineRPEExtends, index: number) => {
     i.LineId = index;
-    const texture = String(i.Texture).replace(/\0/g, '');
-    if (texture === 'line.png') return;
-    const { extended } = i;
-    const scaleX = extended?.scaleXEvents ? extended.scaleXEvents[extended.scaleXEvents.length - 1].end : 1;
-    const scaleY = extended?.scaleYEvents ? extended.scaleYEvents[extended.scaleYEvents.length - 1].end : 1;
+    const texture = String(i.Texture || '').replace(/\0/g, '').trim();
+    if (!texture || texture === 'line.png') return;
     line.push({
       Chart: chartName,
       LineId: index.toString(),
       Image: texture,
-      Scale: scaleY.toString(),
-      Aspect: (scaleX / scaleY).toString(),
+      Scale: '1',
+      Aspect: '1',
       UseBackgroundDim: '0',
-      UseLineColor: '1',
-      UseLineScale: '1'
+      UseLineColor: '0',
+      UseLineScale: '1',
+      RpeTexture: '1'
     });
   });
   // bpm变速

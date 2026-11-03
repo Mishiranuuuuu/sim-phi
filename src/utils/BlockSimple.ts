@@ -31,7 +31,12 @@ interface TessellatedQuad {
   rgb: [number, number, number];
 }
 
-export function tessellate(aspect: number, zones: Zone[], disabled: boolean): TessellatedQuad[] {
+export function tessellate(
+  aspect: number,
+  zones: Zone[],
+  disabled: boolean,
+  ignoreTripleInversion = false
+): TessellatedQuad[] {
   if (!isFinite(aspect) || aspect <= 0) return [];
 
   const halfHeight = 1.0 / aspect;
@@ -165,7 +170,9 @@ export function tessellate(aspect: number, zones: Zone[], disabled: boolean): Te
         normal += left.delta * left.opacity;
       }
 
-      const inverted = Math.abs(subtract - 1) < 0.5;
+      const inverted = ignoreTripleInversion
+        ? Math.abs(subtract - 1) < 0.5
+        : Math.abs((Math.abs(subtract) % 2) - 1) < 0.5;
       let inverse = 0;
       if (disabled) {
         const green = Math.max(0, Math.min(1, subtractOpacity * 0.1));
@@ -218,9 +225,10 @@ export function drawBlockSimple(
   ctx: CanvasRenderingContext2D,
   aspect: number,
   zones: Zone[],
-  disabled: boolean
+  disabled: boolean,
+  ignoreTripleInversion = false
 ) {
-  const quads = tessellate(aspect, zones, disabled);
+  const quads = tessellate(aspect, zones, disabled, ignoreTripleInversion);
   if (quads.length === 0) return;
 
   const W = ctx.canvas.width;

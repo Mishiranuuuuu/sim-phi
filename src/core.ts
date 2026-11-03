@@ -73,6 +73,7 @@ interface JudgeLineExtends extends JudgeLine {
   imageA: number;
   imageL: [ImageBitmap, ImageBitmap, null, ImageBitmap];
   imageC: boolean;
+  imageR: boolean;
   scaleXVal?: number;
   scaleYVal?: number;
   scaleXTrack?: RpeTrack;
@@ -303,7 +304,7 @@ function computeBlockAreaTransform(
   return {
     center,
     size,
-    rotation,
+    rotation: -rotation,
     scale
   };
 }

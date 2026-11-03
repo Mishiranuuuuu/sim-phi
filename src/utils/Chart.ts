@@ -263,7 +263,7 @@ export class Chart {
     this.numOfNotes = Type.int(chart.numOfNotes);
     this.judgeLineList = Type.arr(chart.judgeLineList, JudgeLine);
     this.blockAreaList = Type.arr(chart.blockAreaList, BlockArea);
-    if (chart.ignoreTripleInversion) this.ignoreTripleInversion = true;
+    this.ignoreTripleInversion = chart.ignoreTripleInversion != null ? Boolean(chart.ignoreTripleInversion) : true;
     if (chart.bpmList) this.bpmList = chart.bpmList as any[];
     if (chart.numOfNotes == null) this.numOfNotes = this.judgeLineList.reduce((a, b) => a + b.numOfNotes, 0);
 

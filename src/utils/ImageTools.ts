@@ -26,10 +26,11 @@ export async function imgPainter(img: ImageBitmap, color: string, limit = 512): 
   return createImageBitmap(ctx.canvas);
 }
 export async function imgBlur(img: ImageBitmap): Promise<ImageBitmap> {
-  const ctx = createCtx(img.width, img.height);
+  const scale = Math.min(1, 1080 / Math.max(1, Math.min(img.width, img.height)));
+  const ctx = createCtx(Math.max(1, Math.round(img.width * scale)), Math.max(1, Math.round(img.height * scale)));
   const { width: w, height: h } = ctx.canvas;
-  ctx.drawImage(img, 0, 0);
-  canvasRGBA(ctx.canvas, 0, 0, w, h, Math.ceil(Math.min(w, h) * 0.0125));
+  ctx.drawImage(img, 0, 0, w, h);
+  canvasRGBA(ctx.canvas, 0, 0, w, h, Math.max(1, Math.min(254, Math.ceil(Math.min(w, h) * 0.1))));
   return createImageBitmap(ctx.canvas);
 }
 export async function imgShader(img: ImageBitmap, color: string, limit = 512): Promise<ImageBitmap> {
