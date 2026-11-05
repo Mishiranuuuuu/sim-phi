@@ -15,7 +15,14 @@ export class HitImage {
     this.time = performance.now();
     this.duration = packs.duration;
     this.effects = packs.effects;
-    this.direction = Array(packs.numOfParts || 0).fill(0).map(() => [Math.random() * 80 + 185, Math.random() * 2 * Math.PI]);
+    const count = packs.numOfParts || 0;
+    const dirs = new Array<number[]>(count);
+    for (let k = 0; k < count; k++) {
+      const dist = Math.random() * 80 + 185;
+      const angle = Math.random() * 2 * Math.PI;
+      dirs[k] = [dist, angle, dist * Math.cos(angle), dist * Math.sin(angle)];
+    }
+    this.direction = dirs;
     this.color = n3;
   }
   public static perfect(offsetX: number, offsetY: number, _note: Renderer.Note): HitImage {

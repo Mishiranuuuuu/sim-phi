@@ -1,5 +1,5 @@
 import { PRESET_SHADERS } from '../shaders/presets';
-import { RPETempo, parseBeat, rpeCurve, BeatFraction, BpmEntry } from './rpeBlock';
+import { RPETempo, parseBeat, rpeCurve, solveCubicBezier, BeatFraction, BpmEntry } from './rpeBlock';
 
 export interface RawExtKeyframe<T = number | [number, number] | [number, number, number, number]> {
   startTime: BeatFraction;
@@ -47,6 +47,20 @@ export interface ParsedEffect {
   order: number;
 }
 
+// Per-keyframe cache of [startSec, endSec] so beat -> seconds conversion is not repeated every frame
+const keyframeSecCache = new WeakMap<object, { tempo: RPETempo; start: number; end: number }>();
+function keyframeSeconds(kf: RawExtKeyframe<any>, tempo: RPETempo): { start: number; end: number } {
+  let entry = keyframeSecCache.get(kf);
+  if (!entry || entry.tempo !== tempo) {
+    entry = { tempo, start: tempo.seconds(parseBeat(kf.startTime)), end: tempo.seconds(parseBeat(kf.endTime)) };
+    keyframeSecCache.set(kf, entry);
+  }
+  return entry;
+}
+
+// Per-track cache of split vec2/vec4 channel keyframes (avoids re-mapping all keyframes every frame)
+const channelSplitCache = new WeakMap<object, RawExtKeyframe<number>[][]>();
+
 function sampleTrackFloat(
   events: RawExtVariable | undefined,
   defaultVal: number,
@@ -60,22 +74,21 @@ function sampleTrackFloat(
 
   const kfs = events as RawExtKeyframe<number>[];
   const first = kfs[0];
-  const firstStartSec = tempo.seconds(parseBeat(first.startTime));
+  const firstStartSec = keyframeSeconds(first, tempo).start;
   if (time < firstStartSec) return defaultVal;
 
   let lo = 0;
   let hi = kfs.length;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    const startSec = tempo.seconds(parseBeat(kfs[mid].startTime));
+    const startSec = keyframeSeconds(kfs[mid], tempo).start;
     if (startSec <= time + 1e-9) lo = mid + 1;
     else hi = mid;
   }
   if (lo === 0) return defaultVal;
 
   const kf = kfs[lo - 1];
-  const startSec = tempo.seconds(parseBeat(kf.startTime));
-  const endSec = tempo.seconds(parseBeat(kf.endTime));
+  const { start: startSec, end: endSec } = keyframeSeconds(kf, tempo);
   const startVal = Number(kf.start) || 0;
   const endVal = Number(kf.end) || 0;
 
@@ -90,16 +103,11 @@ function sampleTrackFloat(
   let eased = p;
   if (kf.bezier && kf.bezierPoints) {
     const [x1, y1, x2, y2] = kf.bezierPoints;
-    const component = (t: number, a: number, b: number) =>
-      3 * t * Math.pow(1 - t, 2) * a + 3 * t * t * (1 - t) * b + Math.pow(t, 3);
-    let blo = 0;
-    let bhi = 1;
-    for (let step = 0; step < 40; step++) {
-      const mid = (blo + bhi) * 0.5;
-      if (component(mid, x1, x2) < p) blo = mid;
-      else bhi = mid;
-    }
-    eased = component((blo + bhi) * 0.5, y1, y2);
+    eased = solveCubicBezier(p, x1, y1, x2, y2);
+  } else if (easingType === 1) {
+    eased = p;
+  } else if (easingLeft === 0 && easingRight === 1) {
+    eased = rpeCurve(easingType, p);
   } else {
     const base = rpeCurve(easingType, easingLeft);
     const range = rpeCurve(easingType, easingRight) - base;
@@ -127,19 +135,18 @@ function sampleTrackVec2(
   if (!Array.isArray(events) || events.length === 0) return defaultVal;
 
   const kfs = events as RawExtKeyframe<[number, number]>[];
-  const xKfs = kfs.map(k => ({
-    ...k,
-    start: Array.isArray(k.start) ? k.start[0] : Number(k.start),
-    end: Array.isArray(k.end) ? k.end[0] : Number(k.end)
-  }));
-  const yKfs = kfs.map(k => ({
-    ...k,
-    start: Array.isArray(k.start) ? k.start[1] : Number(k.start),
-    end: Array.isArray(k.end) ? k.end[1] : Number(k.end)
-  }));
+  let split = channelSplitCache.get(kfs);
+  if (!split) {
+    split = [0, 1].map(c => kfs.map(k => ({
+      ...k,
+      start: Array.isArray(k.start) ? k.start[c] : Number(k.start),
+      end: Array.isArray(k.end) ? k.end[c] : Number(k.end)
+    })));
+    channelSplitCache.set(kfs, split);
+  }
   return [
-    sampleTrackFloat(xKfs, defaultVal[0], time, tempo),
-    sampleTrackFloat(yKfs, defaultVal[1], time, tempo)
+    sampleTrackFloat(split[0], defaultVal[0], time, tempo),
+    sampleTrackFloat(split[1], defaultVal[1], time, tempo)
   ];
 }
 
@@ -164,21 +171,25 @@ function sampleTrackVec4(
   if (!Array.isArray(events) || events.length === 0) return defaultVal;
 
   const kfs = events as RawExtKeyframe<any>[];
-  let is255 = false;
-  for (const k of kfs) {
-    if (Array.isArray(k.start) && k.start.some((v: number) => v > 1)) is255 = true;
-    if (Array.isArray(k.end) && k.end.some((v: number) => v > 1)) is255 = true;
-  }
-  const scale = is255 ? 1 / 255 : 1;
-
-  const channels: [number, number, number, number] = [0, 0, 0, 0];
-  for (let c = 0; c < 4; c++) {
-    const cKfs = kfs.map(k => ({
+  let split = channelSplitCache.get(kfs);
+  if (!split) {
+    let is255 = false;
+    for (const k of kfs) {
+      if (Array.isArray(k.start) && k.start.some((v: number) => v > 1)) is255 = true;
+      if (Array.isArray(k.end) && k.end.some((v: number) => v > 1)) is255 = true;
+    }
+    const scale = is255 ? 1 / 255 : 1;
+    split = [0, 1, 2, 3].map(c => kfs.map(k => ({
       ...k,
       start: (Array.isArray(k.start) ? k.start[c] ?? defaultVal[c] : Number(k.start)) * scale,
       end: (Array.isArray(k.end) ? k.end[c] ?? defaultVal[c] : Number(k.end)) * scale
-    }));
-    channels[c] = sampleTrackFloat(cKfs, defaultVal[c], time, tempo);
+    })));
+    channelSplitCache.set(kfs, split);
+  }
+
+  const channels: [number, number, number, number] = [0, 0, 0, 0];
+  for (let c = 0; c < 4; c++) {
+    channels[c] = sampleTrackFloat(split[c], defaultVal[c], time, tempo);
   }
   return channels;
 }
@@ -235,6 +246,8 @@ export class EffectManager {
   private programCache = new Map<string, WebGLProgram>();
   private activeParsedEffects: ParsedEffect[] = [];
   private currentTempo: RPETempo | null = null;
+  private activeScratch: ParsedEffect[] = [];
+  private uniformLocCache = new WeakMap<WebGLProgram, Map<string, WebGLUniformLocation | null>>();
 
   public constructor() {
     this.initGL();
@@ -608,12 +621,14 @@ void main() {
     if (!gl || !glCanvas) return;
 
     // Filter active effects by time and global/non-global scope
-    const active = this.activeParsedEffects.filter(e => {
-      if (time < e.startSec || time > e.endSec || e.program == null) return false;
-      if (filter === 'non-global') return !e.global;
-      if (filter === 'global') return !!e.global;
-      return true;
-    });
+    const active = this.activeScratch;
+    active.length = 0;
+    for (const e of this.activeParsedEffects) {
+      if (time < e.startSec || time > e.endSec || e.program == null) continue;
+      if (filter === 'non-global' && e.global) continue;
+      if (filter === 'global' && !e.global) continue;
+      active.push(e);
+    }
     if (active.length === 0) return;
 
     const width = canvasfg.width;
@@ -668,25 +683,38 @@ void main() {
       // Bind input texture
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, readTex);
-      const uScreenTex = gl.getUniformLocation(program, 'screenTexture');
+      const getLoc = (name: string) => {
+        let locs = this.uniformLocCache.get(program);
+        if (!locs) {
+          locs = new Map();
+          this.uniformLocCache.set(program, locs);
+        }
+        let loc = locs.get(name);
+        if (loc === undefined) {
+          loc = gl.getUniformLocation(program, name);
+          locs.set(name, loc);
+        }
+        return loc;
+      };
+      const uScreenTex = getLoc('screenTexture');
       if (uScreenTex) gl.uniform1i(uScreenTex, 0);
 
       // Standard uniforms
-      const uTime = gl.getUniformLocation(program, 'time');
+      const uTime = getLoc('time');
       if (uTime) gl.uniform1f(uTime, time);
 
-      const uScreenSize = gl.getUniformLocation(program, 'screenSize');
+      const uScreenSize = getLoc('screenSize');
       if (uScreenSize) gl.uniform2f(uScreenSize, width, height);
 
-      const uUVScale = gl.getUniformLocation(program, 'UVScale');
+      const uUVScale = getLoc('UVScale');
       if (uUVScale) gl.uniform2f(uUVScale, 1.0, 1.0);
 
-      const uFlipY = gl.getUniformLocation(program, 'u_flipY');
+      const uFlipY = getLoc('u_flipY');
       if (uFlipY) gl.uniform1f(uFlipY, flipY);
 
       // Effect specific uniforms
       for (const u of effect.uniforms) {
-        const loc = gl.getUniformLocation(program, u.name);
+        const loc = getLoc(u.name);
         if (!loc) continue;
 
         if (u.type === 'float') {

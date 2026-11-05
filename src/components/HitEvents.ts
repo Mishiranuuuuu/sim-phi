@@ -14,8 +14,8 @@ export class HitEvents<T> extends Array<T> {
     this.animate = this.iterate.bind(this, iterateCallback);
   }
   private defilter(predicate: (arg0: T) => boolean): this {
-    let i = this.length;
-    while (i--) if (predicate(this[i])) this.splice(i, 1);
+    let write = 0;
+    for (let read = 0, len = this.length; read < len; read++) if (!predicate(this[read])) this[write++] = this[read]; this.length = write;
     return this;
   }
   private iterate(callback: (arg0: T) => void): void {

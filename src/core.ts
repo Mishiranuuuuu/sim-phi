@@ -83,6 +83,8 @@ interface JudgeLineExtends extends JudgeLine {
   textVal?: string;
   textTrack?: RpeTextTrack;
   controls?: LineControlTracks;
+  anchorX: number;
+  anchorY: number;
 }
 interface BlockAreaExtends extends BlockArea {
   centerX: number;
@@ -362,6 +364,8 @@ export class Renderer {
   public bgMusic: AudioBuffer | null;
   public bgVideo: HTMLVideoElement | null;
   private _mirrorType: number;
+  private _sizeDirty: boolean;
+  private _lastDpr: number;
   private initialized: boolean;
   public constructor(stage: unknown) {
     if (!(stage instanceof HTMLDivElement)) throw new Error('Not a container');
@@ -434,6 +438,23 @@ export class Renderer {
     this.matY = y => y;
     this.matR = r => r;
     this.initialized = false;
+    this._sizeDirty = true;
+    this._lastDpr = self.devicePixelRatio || 1;
+    if (typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(() => {
+        this._sizeDirty = true;
+      }).observe(this.stage);
+    }
+    if (typeof MutationObserver !== 'undefined') {
+      new MutationObserver(() => {
+        this._sizeDirty = true;
+      }).observe(this.stage, { attributes: true, attributeFilter: ['style', 'class'] });
+    }
+    if (typeof self.addEventListener === 'function') {
+      self.addEventListener('resize', () => {
+        this._sizeDirty = true;
+      });
+    }
     // event
     this._setLowResFactor(1);
     this.resizeCanvas();
@@ -452,11 +473,15 @@ export class Renderer {
     this._setLowResFactor(num);
     this._resizeCanvas();
   }
-  public resizeCanvas(): void {
+  public resizeCanvas(force = true): void {
+    const dpr = self.devicePixelRatio || 1;
+    if (!force && !this._sizeDirty && dpr === this._lastDpr) return;
+    this._sizeDirty = false;
     const { width, height } = this.stage.getBoundingClientRect();
-    if (this.width === width && this.height === height) return;
+    if (this.width === width && this.height === height && dpr === this._lastDpr) return;
     this.width = width;
     this.height = height;
+    this._lastDpr = dpr;
     this.canvas.style.cssText += `;width:${width.toFixed(3)}px;height:${height.toFixed(3)}px`; //   只有inset还是会溢出
     this._resizeCanvas();
   }
@@ -579,6 +604,7 @@ export class Renderer {
     const sortNote = (a: NoteExtends, b: NoteExtends) => a.seconds - b.seconds || a.lineId - b.lineId || a.noteId - b.noteId;
     //   优化events
     chartNew.judgeLineList.forEach((i, lineId) => i.lineId = lineId);
+    const sharedTempo = chartNew.bpmList?.length ? new RPETempo(chartNew.bpmList) : null;
     for (const line of chartNew.judgeLineList) {
       line.bpm *= this.speed;
       line.offsetX = 0;
@@ -589,9 +615,12 @@ export class Renderer {
       line.positionY2 = 0;
       line.scaleXVal = 1;
       line.scaleYVal = 1;
-      const tempo = chartNew.bpmList?.length
-        ? new RPETempo(chartNew.bpmList)
-        : new RPETempo([{ startTime: [0, 0, 1], bpm: line.bpm / this.speed }]); //   RPETempo works in song seconds (unscaled bpm)
+      const rawAnchor = line.anchor;
+      const rawAx = rawAnchor ? (Array.isArray(rawAnchor) ? Number(rawAnchor[0]) : Number((rawAnchor as any).x)) : 0.5;
+      const rawAy = rawAnchor ? (Array.isArray(rawAnchor) ? Number(rawAnchor[1]) : Number((rawAnchor as any).y)) : 0.5;
+      line.anchorX = isFinite(rawAx) ? rawAx : 0.5;
+      line.anchorY = isFinite(rawAy) ? rawAy : 0.5;
+      const tempo = sharedTempo ?? new RPETempo([{ startTime: [0, 0, 1], bpm: line.bpm / this.speed }]); //   RPETempo works in song seconds (unscaled bpm)
       if (line.scaleXEvents?.length) {
         line.scaleXTrack = new RpeTrack(line.scaleXEvents, 'X', 1, { x: 0, y: 0 }, tempo);
       }
@@ -711,10 +740,117 @@ export class Renderer {
     }
 
   }
+  private _updateLineNotes(
+    notes: NoteExtends[],
+    line: JudgeLineExtends,
+    sign: number,
+    time: number,
+    nowMS: number,
+    baseVisRadius: number,
+    baseVisRadiusSq: number
+  ): void {
+    const len = notes.length;
+    if (len === 0) return;
+    const wlen = this.wlen;
+    const hlen = this.hlen;
+    const scaleX = this.scaleX;
+    const scaleY = this.scaleY;
+    const speed = this.speed;
+    const enableVP = this.enableVP;
+    const lineCosr = sign * line.cosr;
+    const lineSinr = sign * line.sinr;
+    const lineOffsetX = line.offsetX;
+    const lineOffsetY = line.offsetY;
+    const linePosY = line.positionY;
+    const linePosY2 = line.positionY2;
+    const lineIsCover = line.isCover;
+    const controls = line.controls;
+    const hasControls = !!(controls && controls.hasAny);
+
+    for (let k = 0; k < len; k++) {
+      const note = notes[k];
+      note.cosr = lineCosr;
+      note.sinr = lineSinr;
+
+      let effBadY: number;
+      if (note.badTime == null) {
+        if (note.type !== 3) effBadY = (note.floorPosition - linePosY) * note.speed;
+        else if (note.seconds < time) effBadY = (note.seconds - time) * speed * note.speed;
+        else effBadY = note.floorPosition - linePosY;
+      } else {
+        if (nowMS - note.badTime > 500) delete note.badTime;
+        if (note.badY == null) {
+          if (note.type !== 3) note.badY = (note.floorPosition - linePosY) * note.speed;
+          else if (note.seconds < time) note.badY = (note.seconds - time) * speed * note.speed;
+          else note.badY = note.floorPosition - linePosY;
+        }
+        effBadY = note.badY;
+      }
+
+      const yOffset = note.yOffset || 0;
+      const isDeadPast = note.type !== 3 && note.badTime == null && (note.scored || note.isFake) && time - note.seconds > 2.0;
+
+      if (hasControls && !isDeadPast) {
+        const distRpe = (effBadY + yOffset) * 540;
+        if (controls!.y) {
+          effBadY *= controls!.y.sample(distRpe);
+        }
+        note.controlPos = controls!.pos ? controls!.pos.sample(distRpe) : 1;
+        note.controlSize = controls!.size ? controls!.size.sample(distRpe) : 1;
+        note.controlAlpha = controls!.alpha ? controls!.alpha.sample(distRpe) : 1;
+        note.controlSkew = controls!.skew ? controls!.skew.sample(distRpe) : 0;
+      } else {
+        note.controlPos = 1;
+        note.controlSize = 1;
+        note.controlAlpha = 1;
+        note.controlSkew = 0;
+      }
+
+      const effWithOff = effBadY + yOffset;
+      const dx = sign * scaleX * (note.positionX * note.controlPos);
+      const dy = scaleY * effWithOff;
+      note.projectX = lineOffsetX + dx * lineCosr;
+      note.offsetX = note.projectX + dy * lineSinr;
+      note.projectY = lineOffsetY + dx * lineSinr;
+      note.offsetY = note.projectY - dy * lineCosr;
+
+      const ox = note.offsetX - wlen;
+      const oy = note.offsetY - hlen;
+      if (note.holdSeconds === 0) {
+        note.visible = ox * ox + oy * oy < baseVisRadiusSq;
+      } else {
+        const r = baseVisRadius + scaleY * note.holdSeconds * speed * note.speed;
+        note.visible = ox * ox + oy * oy < r * r; //   Math.hypot实测性能较低
+      }
+
+      note.showPoint = false;
+      if (note.badTime != null) {
+        // Not bad
+      } else if (note.seconds > time) {
+        note.showPoint = true;
+        const isHidden = (lineIsCover !== 0 && note.maxVisiblePos < linePosY2) || (note.visibleTime < 75000 && (note.seconds - time > note.visibleTime));
+        const base = isHidden || (enableVP && effWithOff * 0.6 > 2) || (note.type === 3 && note.speed === 0) ? 0 : 1;
+        note.alpha = base * note.baseAlpha * note.controlAlpha;
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        note.frameCount = note.frameCount == null ? 0 : note.frameCount + 1;
+        if (note.type === 3) {
+          note.showPoint = true;
+          note.alpha = (note.speed === 0 ? 0 : note.status % 4 === 2 ? 0.45 : 1) * note.baseAlpha * note.controlAlpha;
+        } else {
+          const fadeDuration = (lineIsCover === 0 || (note.line && note.line.isCover === 0)) ? 2.0 : 0.16;
+          note.alpha = Math.max(1 - (time - note.seconds) / fadeDuration, 0) * note.baseAlpha * note.controlAlpha;
+        }
+      }
+    }
+  }
   public updateByTime(time: number): void {
     if (!this.initialized) throw new Error('Not initialized');
     //   RPETempo-based tracks and block areas are stored in song seconds (not scaled by playback speed)
     const songTime = time * this.speed;
+    const nowMS = performance.now();
+    const baseVisRadius = this.wlen * 1.23625 + this.hlen;
+    const baseVisRadiusSq = baseVisRadius * baseVisRadius;
     for (const line of this.lines) {
       for (let i = line.disappearEventsIndex, len = line.judgeLineDisappearEvents.length; i < len; i++) {
         const evt = line.judgeLineDisappearEvents[i];
@@ -745,10 +881,10 @@ export class Renderer {
         break;
       }
       if (line.scaleXTrack) {
-        line.scaleXVal = line.scaleXTrack.sample(songTime)[0];
+        line.scaleXVal = line.scaleXTrack.sampleValue(songTime);
       }
       if (line.scaleYTrack) {
-        line.scaleYVal = line.scaleYTrack.sample(songTime)[0];
+        line.scaleYVal = line.scaleYTrack.sampleValue(songTime);
       }
       if (line.colorTrack) {
         line.colorVal = line.colorTrack.sample(songTime);
@@ -764,89 +900,8 @@ export class Renderer {
         line.speedEventsIndex = i;
         break;
       }
-      const getGoodY = (i: NoteExtends) => {
-        if (i.type !== 3) return (i.floorPosition - line.positionY) * i.speed;
-        if (i.seconds < time) return (i.seconds - time) * this.speed * i.speed;
-        return i.floorPosition - line.positionY;
-      };
-      const getBadY = (i: NoteExtends) => {
-        if (i.badTime == null) return getGoodY(i);
-        if (performance.now() - i.badTime > 500) delete i.badTime;
-        if (i.badY == null) i.badY = getGoodY(i);
-        return i.badY;
-      };
-      const setAlpha = (i: NoteExtends, dx: number, dy: number, effBadY: number) => {
-        i.projectX = line.offsetX + dx * i.cosr;
-        i.offsetX = i.projectX + dy * i.sinr;
-        i.projectY = line.offsetY + dx * i.sinr;
-        i.offsetY = i.projectY - dy * i.cosr;
-        i.visible = (i.offsetX - this.wlen) ** 2 + (i.offsetY - this.hlen) ** 2 < (this.wlen * 1.23625 + this.hlen + this.scaleY * i.holdSeconds * this.speed * i.speed) ** 2; //   Math.hypot实测性能较低
-        i.showPoint = false;
-        if (i.badTime != null) {
-          // Not bad
-        } else if (i.seconds > time) {
-          i.showPoint = true;
-          const isHidden = (line.isCover !== 0 && i.maxVisiblePos < line.positionY2) || (i.visibleTime < 75000 && (i.seconds - time > i.visibleTime));
-          const base = isHidden || (this.enableVP && (effBadY + (i.yOffset || 0)) * 0.6 > 2) || (i.type === 3 && i.speed === 0) ? 0 : 1;
-          i.alpha = base * i.baseAlpha * (i.controlAlpha ?? 1);
-        } else {
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          i.frameCount = i.frameCount == null ? 0 : i.frameCount + 1;
-          if (i.type === 3) {
-            i.showPoint = true;
-            i.alpha = (i.speed === 0 ? 0 : i.status % 4 === 2 ? 0.45 : 1) * i.baseAlpha * (i.controlAlpha ?? 1);
-          } else {
-            const fadeDuration = (line.isCover === 0 || (i.line && i.line.isCover === 0)) ? 2.0 : 0.16;
-            i.alpha = Math.max(1 - (time - i.seconds) / fadeDuration, 0) * i.baseAlpha * (i.controlAlpha ?? 1);
-          }
-        }
-      };
-
-      const controls = line.controls;
-      const hasControls = controls && controls.hasAny;
-
-      for (const note of line.notesAbove) {
-        note.cosr = line.cosr;
-        note.sinr = line.sinr;
-        let effBadY = getBadY(note);
-        if (hasControls) {
-          const distRpe = (effBadY + (note.yOffset || 0)) * 540;
-          if (controls.y) {
-            effBadY *= controls.y.sample(distRpe);
-          }
-          note.controlPos = controls.pos ? controls.pos.sample(distRpe) : 1;
-          note.controlSize = controls.size ? controls.size.sample(distRpe) : 1;
-          note.controlAlpha = controls.alpha ? controls.alpha.sample(distRpe) : 1;
-          note.controlSkew = controls.skew ? controls.skew.sample(distRpe) : 0;
-        } else {
-          note.controlPos = 1;
-          note.controlSize = 1;
-          note.controlAlpha = 1;
-          note.controlSkew = 0;
-        }
-        setAlpha(note, this.scaleX * (note.positionX * note.controlPos), this.scaleY * (effBadY + (note.yOffset || 0)), effBadY);
-      }
-      for (const note of line.notesBelow) {
-        note.cosr = -line.cosr;
-        note.sinr = -line.sinr;
-        let effBadY = getBadY(note);
-        if (hasControls) {
-          const distRpe = (effBadY + (note.yOffset || 0)) * 540;
-          if (controls.y) {
-            effBadY *= controls.y.sample(distRpe);
-          }
-          note.controlPos = controls.pos ? controls.pos.sample(distRpe) : 1;
-          note.controlSize = controls.size ? controls.size.sample(distRpe) : 1;
-          note.controlAlpha = controls.alpha ? controls.alpha.sample(distRpe) : 1;
-          note.controlSkew = controls.skew ? controls.skew.sample(distRpe) : 0;
-        } else {
-          note.controlPos = 1;
-          note.controlSize = 1;
-          note.controlAlpha = 1;
-          note.controlSkew = 0;
-        }
-        setAlpha(note, -this.scaleX * (note.positionX * note.controlPos), this.scaleY * (effBadY + (note.yOffset || 0)), effBadY);
-      }
+      this._updateLineNotes(line.notesAbove, line, 1, time, nowMS, baseVisRadius, baseVisRadiusSq);
+      this._updateLineNotes(line.notesBelow, line, -1, time, nowMS, baseVisRadius, baseVisRadiusSq);
     }
     const W = this.canvasfg.width;
     const H = this.canvasfg.height;

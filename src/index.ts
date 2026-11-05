@@ -581,9 +581,15 @@ const hitImageList = new HitEvents({ //   存放点击特效
     ctxfg.fillStyle = i.color;
     ctxfg.globalAlpha = 1 - tick; //   不透明度
     const r3 = 30 * (((0.2078 * tick - 1.6524) * tick + 1.6399) * tick + 0.4988); //   方块大小
+    const halfR3 = r3 * 0.5;
+    const factor = 9 * tick / (8 * tick + 1);
     for (const j of i.direction) {
-      const ds = j[0] * (9 * tick / (8 * tick + 1)); //   打击点距离
-      ctxfg.fillRect(ds * Math.cos(j[1]) - r3 / 2, ds * Math.sin(j[1]) - r3 / 2, r3, r3);
+      if (j.length >= 4) {
+        ctxfg.fillRect(j[2] * factor - halfR3, j[3] * factor - halfR3, r3, r3);
+      } else {
+        const ds = j[0] * factor; //   打击点距离
+        ctxfg.fillRect(ds * Math.cos(j[1]) - halfR3, ds * Math.sin(j[1]) - halfR3, r3, r3);
+      }
     }
   }
 });
@@ -601,15 +607,37 @@ const hitWordList = new HitEvents({ //   存放点击特效
 });
 const judgeManager = {
   list: [] as JudgeEvent[],
+  cursors: new WeakMap<Renderer.Note[], { idx: number; first: Renderer.Note | undefined; lastSec: number }>(),
+  getStartIndex(notes: Renderer.Note[], seconds: number): number {
+    let entry = this.cursors.get(notes);
+    if (
+      !entry ||
+      entry.first !== notes[0] ||
+      seconds < entry.lastSec ||
+      (entry.idx > 0 && entry.idx <= notes.length && !notes[entry.idx - 1].isFake && !notes[entry.idx - 1].scored)
+    ) {
+      entry = { idx: 0, first: notes[0], lastSec: seconds };
+      this.cursors.set(notes, entry);
+    } else {
+      entry.lastSec = seconds;
+    }
+    let idx = entry.idx;
+    const len = notes.length;
+    while (idx < len && (notes[idx].isFake || notes[idx].scored)) idx++;
+    entry.idx = idx;
+    return idx;
+  },
   addEvent(notes: Renderer.Note[], seconds: number) {
     const { list } = this;
     list.length = 0;
     if (app.playMode === 1) {
       const dispTime = Math.min(frameTimer.disp, 0.04);
-      for (const note of notes) {
+      for (let i = this.getStartIndex(notes, seconds), len = notes.length; i < len; i++) {
+        const note = notes[i];
         if (note.isFake) continue;
         if (note.scored) continue;
         const deltaTime = note.seconds - seconds;
+        if (deltaTime > 0.2) break;
         if (note.type === 1) {
           if (deltaTime < dispTime) list[list.length] = new JudgeEvent(note.offsetX, note.offsetY, 1);
         } else if (note.type === 2) {
@@ -631,7 +659,8 @@ const judgeManager = {
   },
   execute(notes: Renderer.Note[], seconds: number, width: number) {
     const { list } = this;
-    for (const note of notes) {
+    for (let i = this.getStartIndex(notes, seconds), len = notes.length; i < len; i++) {
+      const note = notes[i];
       if (note.isFake) continue;
       if (note.scored) continue; //   跳过已判分的Note
       const deltaTime = note.seconds - seconds;
@@ -1228,7 +1257,7 @@ function mainLoop() {
   frameTimer.addTick(); //   计算fps
   const { lineScale } = app;
   nowTimeMS = performance.now();
-  app.resizeCanvas();
+  app.resizeCanvas(false);
   //   计算时间
   if (timeOut.second < 0.67) {
     loopNoCanvas();
@@ -1328,11 +1357,25 @@ function loopNoCanvas() {
   tmps.progress = (main.awawa ? duration0 - timeBgm : timeBgm) / duration0;
   tmps.name = inputName.value || inputName.placeholder;
   tmps.artist = inputArtist.value;
-  tmps.illustrator = `Illustration designed by ${inputIllustrator.value || inputIllustrator.placeholder}`;
-  tmps.charter = `Level designed by ${inputCharter.value || inputCharter.placeholder}`;
+  const rawIllus = inputIllustrator.value || inputIllustrator.placeholder;
+  if (rawIllus !== cachedIllusRaw) {
+    cachedIllusRaw = rawIllus;
+    cachedIllusStr = `Illustration designed by ${rawIllus}`;
+  }
+  tmps.illustrator = cachedIllusStr;
+  const rawCharter = inputCharter.value || inputCharter.placeholder;
+  if (rawCharter !== cachedCharterRaw) {
+    cachedCharterRaw = rawCharter;
+    cachedCharterStr = `Level designed by ${rawCharter}`;
+  }
+  tmps.charter = cachedCharterStr;
   tmps.level = levelInfoHandler.text;
   if (stat.combo > 2) {
-    tmps.combo = `${stat.combo}`;
+    if (stat.combo !== cachedComboVal) {
+      cachedComboVal = stat.combo;
+      cachedComboStr = `${stat.combo}`;
+    }
+    tmps.combo = cachedComboStr;
     tmps.combo2 = app.playMode === 1 ? 'Autoplay' : 'combo';
   } else {
     tmps.combo = '';
@@ -1342,8 +1385,47 @@ function loopNoCanvas() {
   tmps.customForeDraw = null;
   tmps.customBackDraw = null;
 }
-let tintCanvas: HTMLCanvasElement | null = null;
-let tintCtx: CanvasRenderingContext2D | null = null;
+let cachedIllusRaw = '';
+let cachedIllusStr = 'Illustration designed by ';
+let cachedCharterRaw = '';
+let cachedCharterStr = 'Level designed by ';
+let cachedComboVal = -1;
+let cachedComboStr = '';
+
+interface TintCacheEntry {
+  byKey: Map<number, HTMLCanvasElement>;
+  scratchCanvas: HTMLCanvasElement | null;
+  scratchCtx: CanvasRenderingContext2D | null;
+  scratchKey: number;
+}
+const tintCache = new WeakMap<object, TintCacheEntry>();
+
+function renderTintedCanvas(
+  targetCanvas: HTMLCanvasElement,
+  targetCtx: CanvasRenderingContext2D,
+  img: CanvasImageSource,
+  imgW: number,
+  imgH: number,
+  r: number,
+  g: number,
+  b: number
+) {
+  if (targetCanvas.width !== imgW || targetCanvas.height !== imgH) {
+    targetCanvas.width = imgW;
+    targetCanvas.height = imgH;
+  } else {
+    targetCtx.clearRect(0, 0, imgW, imgH);
+  }
+  targetCtx.globalCompositeOperation = 'source-over';
+  targetCtx.drawImage(img, 0, 0);
+  targetCtx.globalCompositeOperation = 'multiply';
+  targetCtx.fillStyle = `rgb(${r},${g},${b})`;
+  targetCtx.fillRect(0, 0, imgW, imgH);
+  targetCtx.globalCompositeOperation = 'destination-in';
+  targetCtx.drawImage(img, 0, 0);
+  targetCtx.globalCompositeOperation = 'source-over';
+}
+
 function drawTintedImage(
   ctx: CanvasRenderingContext2D,
   img: CanvasImageSource | null,
@@ -1356,31 +1438,55 @@ function drawTintedImage(
   b: number
 ) {
   if (!img) return;
-  if (r === 255 && g === 255 && b === 255) {
+  const ri = r | 0;
+  const gi = g | 0;
+  const bi = b | 0;
+  if (ri === 255 && gi === 255 && bi === 255) {
     ctx.drawImage(img, x, y, w, h);
     return;
   }
   const imgW = Number((img as any).width) || 1;
   const imgH = Number((img as any).height) || 1;
-  if (!tintCanvas) {
-    tintCanvas = document.createElement('canvas');
-    tintCtx = tintCanvas.getContext('2d');
+  const colorKey = ((ri & 255) << 16) | ((gi & 255) << 8) | (bi & 255);
+
+  let entry = tintCache.get(img as object);
+  if (!entry) {
+    entry = { byKey: new Map(), scratchCanvas: null, scratchCtx: null, scratchKey: -1 };
+    tintCache.set(img as object, entry);
   }
-  if (!tintCtx) {
+
+  const cached = entry.byKey.get(colorKey);
+  if (cached && cached.width === imgW && cached.height === imgH) {
+    ctx.drawImage(cached, x, y, w, h);
+    return;
+  }
+
+  if (entry.byKey.size < 16) {
+    const c = cached || document.createElement('canvas');
+    const cctx = c.getContext('2d');
+    if (!cctx) {
+      ctx.drawImage(img, x, y, w, h);
+      return;
+    }
+    renderTintedCanvas(c, cctx, img, imgW, imgH, ri, gi, bi);
+    entry.byKey.set(colorKey, c);
+    ctx.drawImage(c, x, y, w, h);
+    return;
+  }
+
+  if (!entry.scratchCanvas) {
+    entry.scratchCanvas = document.createElement('canvas');
+    entry.scratchCtx = entry.scratchCanvas.getContext('2d');
+  }
+  if (!entry.scratchCtx) {
     ctx.drawImage(img, x, y, w, h);
     return;
   }
-  tintCanvas.width = imgW;
-  tintCanvas.height = imgH;
-  tintCtx.clearRect(0, 0, imgW, imgH);
-  tintCtx.drawImage(img, 0, 0);
-  tintCtx.globalCompositeOperation = 'multiply';
-  tintCtx.fillStyle = `rgb(${r},${g},${b})`;
-  tintCtx.fillRect(0, 0, imgW, imgH);
-  tintCtx.globalCompositeOperation = 'destination-in';
-  tintCtx.drawImage(img, 0, 0);
-  tintCtx.globalCompositeOperation = 'source-over';
-  ctx.drawImage(tintCanvas, x, y, w, h);
+  if (entry.scratchKey !== colorKey || entry.scratchCanvas.width !== imgW || entry.scratchCanvas.height !== imgH) {
+    renderTintedCanvas(entry.scratchCanvas, entry.scratchCtx, img, imgW, imgH, ri, gi, bi);
+    entry.scratchKey = colorKey;
+  }
+  ctx.drawImage(entry.scratchCanvas, x, y, w, h);
 }
 
 function withAttachedUI(
@@ -1732,21 +1838,22 @@ function loopCanvas() {
   ctxfg.font = `${lineScale * 0.4}px ${FONT_FAMILY}`;
   if (tmps.showStat && showStat.checked) {
     ctxfg.textAlign = 'right';
-    [stat.noteRank[6], stat.noteRank[7], stat.noteRank[5], stat.noteRank[4], stat.noteRank[1], stat.noteRank[3], stat.noteRank[2]].forEach((val, idx) => {
-      const comboColor = ['#fe7b93', '#0ac3ff', 'lime', '#f0ed69', 'lime', '#0ac3ff', '#999'];
-      ctxfg.fillStyle = comboColor[idx];
-      ctxfg.fillText(val.toString(), canvasfg.width - lineScale * 0.05, canvasfg.height / 2 + lineScale * (idx - 2.8) * 0.5);
-    });
+    const rankX = canvasfg.width - lineScale * 0.05;
+    const rankBaseY = canvasfg.height / 2;
+    for (let idx = 0; idx < STAT_RANK_INDICES.length; idx++) {
+      ctxfg.fillStyle = STAT_RANK_COLORS[idx];
+      ctxfg.fillText(stat.noteRank[STAT_RANK_INDICES[idx]].toString(), rankX, rankBaseY + lineScale * (idx - 2.8) * 0.5);
+    }
     ctxfg.fillStyle = '#fff';
     ctxfg.textAlign = 'left';
-    ctxfg.fillText(`DSP:  ${stat.curDispStr}`, lineScale * 0.05, canvasfg.height / 2 - lineScale * 0.15);
-    ctxfg.fillText(`AVG:  ${stat.avgDispStr}`, lineScale * 0.05, canvasfg.height / 2 + lineScale * 0.35);
+    ctxfg.fillText(`DSP:  ${stat.curDispStr}`, lineScale * 0.05, rankBaseY - lineScale * 0.15);
+    ctxfg.fillText(`AVG:  ${stat.avgDispStr}`, lineScale * 0.05, rankBaseY + lineScale * 0.35);
     ctxfg.textAlign = 'center';
-    stat.combos.forEach((val, idx) => {
-      const comboColor = ['#fff', '#0ac3ff', '#f0ed69', '#a0e9fd', '#fe4365'];
-      ctxfg.fillStyle = comboColor[idx];
-      ctxfg.fillText(val.toString(), lineScale * (idx + 0.55) * 1.1, canvasfg.height - lineScale * 0.1);
-    });
+    const comboY = canvasfg.height - lineScale * 0.1;
+    for (let idx = 0; idx < stat.combos.length; idx++) {
+      ctxfg.fillStyle = STAT_COMBO_COLORS[idx];
+      ctxfg.fillText(stat.combos[idx].toString(), lineScale * (idx + 0.55) * 1.1, comboY);
+    }
   }
   if (timeIn.second >= 2.5 && timeIn.second < 3) ctxfg.globalAlpha = 1 - tween.easeOutSine(6 - timeIn.second * 2);
   else ctxfg.globalAlpha = 1 - tween.easeOutSine(timeOut.second * 1.5);
@@ -1763,6 +1870,9 @@ function loopCanvas() {
   // Apply post-processing shaders over UI/HUD (global shaders, or all shaders if "All shaders affect UI/HUD" is on)
   effectManager.render(canvasfg, ctxfg, timeSong, shaderAffectsUI.checked ? 'all' : 'global');
 }
+const STAT_RANK_INDICES = [6, 7, 5, 4, 1, 3, 2] as const;
+const STAT_RANK_COLORS = ['#fe7b93', '#0ac3ff', 'lime', '#f0ed69', 'lime', '#0ac3ff', '#999'] as const;
+const STAT_COMBO_COLORS = ['#fff', '#0ac3ff', '#f0ed69', '#a0e9fd', '#fe4365'] as const;
 //   判定线函数，undefined/0:默认,1:非,2:恒成立
 function drawLine(bool: number, lineScale: number) {
   const tw = 1 - tween.easeOutSine(timeOut.second * 1.5);
@@ -1770,8 +1880,8 @@ function drawLine(bool: number, lineScale: number) {
     if ((line as any).isBlockMarker) continue;
     if (bool ^ Number(line.imageD) && timeOut.second < 0.67) {
       if (line.alpha <= 0) continue;
-      ctxfg.globalAlpha = line.alpha;
-      ctxfg.setTransform(line.cosr * tw, line.sinr, -line.sinr * tw, line.cosr, app.wlen + (line.offsetX - app.wlen) * tw, line.offsetY); // Hiahiah
+      const tx = app.wlen + (line.offsetX - app.wlen) * tw;
+      const ty = line.offsetY;
 
       // Text line rendering
       if ((line as any).textTrack || (line as any).textEvents?.length) {
@@ -1780,8 +1890,9 @@ function drawLine(bool: number, lineScale: number) {
           const scaleX = (line as any).scaleXVal ?? 1;
           const scaleY = (line as any).scaleYVal ?? 1;
           if (scaleX !== 0 && scaleY !== 0) {
+            ctxfg.globalAlpha = line.alpha;
             ctxfg.save();
-            ctxfg.scale(scaleX, scaleY);
+            ctxfg.setTransform(line.cosr * tw * scaleX, line.sinr * scaleX, -line.sinr * tw * scaleY, line.cosr * scaleY, tx, ty);
             if (line.colorVal) {
               const [r, g, b] = line.colorVal;
               ctxfg.fillStyle = `rgb(${r},${g},${b})`;
@@ -1791,11 +1902,8 @@ function drawLine(bool: number, lineScale: number) {
             const fontSize = (canvasfg.height / 900) * 50;
             ctxfg.font = `${fontSize}px ${FONT_FAMILY}`;
 
-            const anchor = (line as any).anchor;
-            const anchorX = anchor ? (Array.isArray(anchor) ? Number(anchor[0]) : Number(anchor.x)) : 0.5;
-            const anchorY = anchor ? (Array.isArray(anchor) ? Number(anchor[1]) : Number(anchor.y)) : 0.5;
-            const safeAnchorX = isFinite(anchorX) ? anchorX : 0.5;
-            const safeAnchorY = isFinite(anchorY) ? anchorY : 0.5;
+            const safeAnchorX = (line as any).anchorX ?? 0.5;
+            const safeAnchorY = (line as any).anchorY ?? 0.5;
 
             // Multiline support (\n)
             const lines = String(text).split('\n');
@@ -1844,6 +1952,8 @@ function drawLine(bool: number, lineScale: number) {
       const scaleX = line.scaleXVal ?? 1;
       const scaleY = line.scaleYVal ?? 1;
       if (scaleX === 0 || scaleY === 0) continue;
+      ctxfg.globalAlpha = line.alpha;
+      ctxfg.setTransform(line.cosr * tw * scaleX, line.sinr * scaleX, -line.sinr * tw * scaleY, line.cosr * scaleY, tx, ty); // Hiahiah
       let baseW: number;
       let baseH: number;
       if (line.imageR) {
@@ -1854,17 +1964,12 @@ function drawLine(bool: number, lineScale: number) {
         baseW = imgS * line.imageW * line.imageA;
         baseH = imgS * line.imageH;
       }
-      const anchor = line.anchor;
-      const anchorX = anchor ? (Array.isArray(anchor) ? Number(anchor[0]) : Number((anchor as any).x)) : 0.5;
-      const anchorY = anchor ? (Array.isArray(anchor) ? Number(anchor[1]) : Number((anchor as any).y)) : 0.5;
-      const safeAnchorX = isFinite(anchorX) ? anchorX : 0.5;
-      const safeAnchorY = isFinite(anchorY) ? anchorY : 0.5;
+      const safeAnchorX = (line as any).anchorX ?? 0.5;
+      const safeAnchorY = (line as any).anchorY ?? 0.5;
       const drawX = -safeAnchorX * baseW;
       const drawY = -safeAnchorY * baseH;
       const isDefaultLine = !line.imageL || line.imageL[0] === res.JudgeLine;
       const img = line.imageL[isDefaultLine && line.imageC && lineColor.checked ? stat.lineStatus : 0] || line.imageL[0];
-      ctxfg.save();
-      ctxfg.scale(scaleX, scaleY);
       if (line.colorVal) {
         const [r, g, b] = line.colorVal;
         if (isDefaultLine) {
@@ -1876,7 +1981,6 @@ function drawLine(bool: number, lineScale: number) {
       } else if (img) {
         ctxfg.drawImage(img, drawX, drawY, baseW, baseH);
       }
-      ctxfg.restore();
     }
   }
   ctxfg.globalAlpha = 1;
@@ -2167,11 +2271,19 @@ function drawNotes() {
   for (const note of app.flicksReversed) drawFlick(note);
 }
 function drawTap(note: Renderer.Note) {
-  const HL = note.isMulti && app.multiHint;
+  if (!note.visible || (note.scored && note.badTime == null)) return;
   const size = Math.max(0, (note.size ?? 1) * (note.controlSize ?? 1));
   if (size === 0) return;
+  let alpha: number;
+  if (note.badTime == null) {
+    alpha = note.alpha || (note.showPoint && showPoint.checked ? 0.45 : 0);
+    if (main.awawa) alpha *= Math.max(1 + (timeChart - note.seconds) / 1.5, 0); //   过线前1.5s出现
+    if (alpha <= 0) return;
+  } else {
+    alpha = (1 - clip((nowTimeMS - note.badTime) / 500)) * (note.baseAlpha ?? 1);
+    if (alpha <= 0) return;
+  }
   const nsr = app.noteScaleRatio * size;
-  if (!note.visible || note.scored && note.badTime == null) return;
   const skew = note.controlSkew || 0;
   ctxfg.setTransform(
     nsr * note.cosr,
@@ -2181,21 +2293,22 @@ function drawTap(note: Renderer.Note) {
     note.offsetX,
     note.offsetY
   );
+  ctxfg.globalAlpha = alpha;
   if (note.badTime == null) {
-    ctxfg.globalAlpha = note.alpha || (note.showPoint && showPoint.checked ? 0.45 : 0);
-    if (main.awawa) ctxfg.globalAlpha *= Math.max(1 + (timeChart - note.seconds) / 1.5, 0); //   过线前1.5s出现
+    const HL = note.isMulti && app.multiHint;
     noteRender.note[HL ? 'TapHL' : 'Tap'].full(ctxfg);
   } else {
-    ctxfg.globalAlpha = (1 - clip((performance.now() - note.badTime) / 500)) * (note.baseAlpha ?? 1);
     noteRender.note.TapBad.full(ctxfg);
   }
 }
 function drawDrag(note: Renderer.Note) {
-  const HL = note.isMulti && app.multiHint;
+  if (!note.visible || note.badTime != null || note.scored) return;
   const size = Math.max(0, (note.size ?? 1) * (note.controlSize ?? 1));
   if (size === 0) return;
+  let alpha = note.alpha || (note.showPoint && showPoint.checked ? 0.45 : 0);
+  if (main.awawa) alpha *= Math.max(1 + (timeChart - note.seconds) / 1.5, 0);
+  if (alpha <= 0) return;
   const nsr = app.noteScaleRatio * size;
-  if (!note.visible || note.scored && note.badTime == null) return;
   const skew = note.controlSkew || 0;
   ctxfg.setTransform(
     nsr * note.cosr,
@@ -2205,23 +2318,20 @@ function drawDrag(note: Renderer.Note) {
     note.offsetX,
     note.offsetY
   );
-  if (note.badTime == null) {
-    ctxfg.globalAlpha = note.alpha || (note.showPoint && showPoint.checked ? 0.45 : 0);
-    if (main.awawa) ctxfg.globalAlpha *= Math.max(1 + (timeChart - note.seconds) / 1.5, 0);
-    noteRender.note[HL ? 'DragHL' : 'Drag'].full(ctxfg);
-  } else {
-    // Nothing to do
-  }
+  ctxfg.globalAlpha = alpha;
+  const HL = note.isMulti && app.multiHint;
+  noteRender.note[HL ? 'DragHL' : 'Drag'].full(ctxfg);
 }
 function drawHold(note: Renderer.Note, seconds: number) {
-  const HL = note.isMulti && app.multiHint;
+  if (!note.visible || note.seconds + note.holdSeconds < seconds) return; //   不绘制时空超界的Hold
   const size = Math.max(0, (note.size ?? 1) * (note.controlSize ?? 1));
   if (size === 0) return;
+  let alpha = note.alpha || (note.showPoint && showPoint.checked ? 0.45 : 0);
+  if (main.awawa) alpha *= Math.max(1 + (timeChart - note.seconds) / 1.5, 0);
+  if (alpha <= 0) return;
   const nsr = app.noteScaleRatio * size;
-  if (!note.visible || note.seconds + note.holdSeconds < seconds) return; //   不绘制时空超界的Hold
-  ctxfg.globalAlpha = note.alpha || (note.showPoint && showPoint.checked ? 0.45 : 0);
-  if (main.awawa) ctxfg.globalAlpha *= Math.max(1 + (timeChart - note.seconds) / 1.5, 0);
   const skew = note.controlSkew || 0;
+  ctxfg.globalAlpha = alpha;
   ctxfg.setTransform(
     nsr * note.cosr,
     nsr * note.sinr,
@@ -2230,6 +2340,7 @@ function drawHold(note: Renderer.Note, seconds: number) {
     note.offsetX,
     note.offsetY
   );
+  const HL = note.isMulti && app.multiHint;
   const baseLength = app.scaleY / nsr * note.speed * app.speed;
   const holdLength = baseLength * note.holdSeconds;
   if (note.seconds > seconds) {
@@ -2239,11 +2350,13 @@ function drawHold(note: Renderer.Note, seconds: number) {
   noteRender.note.HoldEnd.tail(ctxfg, -holdLength);
 }
 function drawFlick(note: Renderer.Note) {
-  const HL = note.isMulti && app.multiHint;
+  if (!note.visible || note.badTime != null || note.scored) return;
   const size = Math.max(0, (note.size ?? 1) * (note.controlSize ?? 1));
   if (size === 0) return;
+  let alpha = note.alpha || (note.showPoint && showPoint.checked ? 0.45 : 0);
+  if (main.awawa) alpha *= Math.max(1 + (timeChart - note.seconds) / 1.5, 0);
+  if (alpha <= 0) return;
   const nsr = app.noteScaleRatio * size;
-  if (!note.visible || note.scored && note.badTime == null) return;
   const skew = note.controlSkew || 0;
   ctxfg.setTransform(
     nsr * note.cosr,
@@ -2253,13 +2366,9 @@ function drawFlick(note: Renderer.Note) {
     note.offsetX,
     note.offsetY
   );
-  if (note.badTime == null) {
-    ctxfg.globalAlpha = note.alpha || (note.showPoint && showPoint.checked ? 0.45 : 0);
-    if (main.awawa) ctxfg.globalAlpha *= Math.max(1 + (timeChart - note.seconds) / 1.5, 0);
-    noteRender.note[HL ? 'FlickHL' : 'Flick'].full(ctxfg);
-  } else {
-    // Nothing to do
-  }
+  ctxfg.globalAlpha = alpha;
+  const HL = note.isMulti && app.multiHint;
+  noteRender.note[HL ? 'FlickHL' : 'Flick'].full(ctxfg);
 }
 //   rgba数组(0-1)转十六进制
 // function rgba2hex(...rgba:number[]) {

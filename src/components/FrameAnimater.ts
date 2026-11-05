@@ -13,7 +13,7 @@ export class FrameAnimater {
   public start(): void {
     if (this.id !== null) return;
     this.lastTime = performance.now();
-    this.id = requestAnimationFrame(this._animate.bind(this));
+    this.id = requestAnimationFrame(this._animate);
   }
   public stop(): void {
     if (this.id === null) return;
@@ -29,7 +29,7 @@ export class FrameAnimater {
     if (!isFinite(this.interval)) this.interval = Number.EPSILON;
   }
   private _animate() {
-    this.id = requestAnimationFrame(this._animate.bind(this)); //   回调更新动画
+    this.id = requestAnimationFrame(this._animate); //   回调更新动画
     const nowTime = performance.now();
     const elapsed = nowTime - this.lastTime;
     if (elapsed > this.interval) {

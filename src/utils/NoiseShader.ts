@@ -2,7 +2,7 @@ import {
   NOISE_VERTEX_SHADER,
   NOISE_FRAGMENT_SHADER
 } from './NoiseShaderSource';
-import { Zone, drawBlockSimple } from './BlockSimple';
+import { Zone, DEFAULT_BLOCK_COLOR, drawBlockSimple } from './BlockSimple';
 import { BlockMasks, zoneFromArea } from './BlockMask';
 
 export interface TouchPoint {
@@ -35,9 +35,25 @@ export class NoiseShaderRenderer {
 
   // Uniform locations cache
   private uLocs: Record<string, WebGLUniformLocation | null> = {};
+  private aPosLoc = -1;
+  private lastTouchCount = 0;
+  private uploadedMaskVersion = -1;
 
   // Touch tracking for hover dissolution
   private touches = new Map<number | string, { x: number; y: number; scale: number; startTime: number }>();
+  private currentTouchIds = new Set<number | string>();
+  private touchScratch: Array<{ x: number; y: number; scale: number }> = [];
+
+  // Pooled & frame-cached zones shared between drawDisabled and drawActive
+  private zonePool: Zone[] = [];
+  private zoneOut: Zone[] = [];
+  private zoneCacheFirst: unknown = null;
+  private zoneCacheLen = -1;
+  private zoneCacheTime = NaN;
+  private zoneCacheAspect = NaN;
+  private zoneHasDisabled = false;
+  private zoneHasActive = false;
+  private zoneHasReady = false;
 
   // Downscaled scene snapshot
   private sceneSmall: HTMLCanvasElement | null = null;
@@ -170,6 +186,65 @@ export class NoiseShaderRenderer {
     this.displaceTex = this.createEmptyTexture();
     this.sparkTex = this.createEmptyTexture();
     this.noiseTex = this.createEmptyTexture();
+
+    this.aPosLoc = gl.getAttribLocation(p, 'aPosition');
+
+    // Upload immutable sampler indices & official Phira-Pro material constants once
+    gl.useProgram(p);
+    if (this.uLocs.uDisplaceTex) gl.uniform1i(this.uLocs.uDisplaceTex, 0);
+    if (this.uLocs.uSparkTex) gl.uniform1i(this.uLocs.uSparkTex, 1);
+    if (this.uLocs.uNoiseTex) gl.uniform1i(this.uLocs.uNoiseTex, 2);
+    if (this.uLocs.uScene) gl.uniform1i(this.uLocs.uScene, 3);
+    if (this.uLocs.uMasks) gl.uniform1i(this.uLocs.uMasks, 4);
+    if (this.uLocs.uAuxMasks) gl.uniform1i(this.uLocs.uAuxMasks, 5);
+    if (this.uLocs.uActiveColors) gl.uniform1i(this.uLocs.uActiveColors, 6);
+    if (this.uLocs.uDisabledColors) gl.uniform1i(this.uLocs.uDisabledColors, 7);
+    gl.uniform1i(this.uLocs.uColored, 0);
+
+    gl.uniform1f(this.uLocs._EdgeOpacity, 0.8);
+    gl.uniform1f(this.uLocs._FillStrength, 0.667);
+    gl.uniform1f(this.uLocs._FillOpacity, 0.667);
+    gl.uniform1f(this.uLocs._GlowIntensity, 0.8);
+    gl.uniform1f(this.uLocs._SparkMapOpacity, 5.69);
+    gl.uniform1f(this.uLocs._SparkHueShiftAmount, 0.2);
+    gl.uniform1f(this.uLocs._SparkDisplaceIntensity, 2.39);
+    gl.uniform1f(this.uLocs._DisplaceBlendIntensity, 0.411);
+    gl.uniform1f(this.uLocs._DisplaceSpeed, 1.5);
+    gl.uniform1f(this.uLocs._DisplaceStrength, 0.15);
+    gl.uniform1f(this.uLocs._TouchPosRadius, 0.5);
+    gl.uniform1f(this.uLocs._TouchPosSDFSmoothness, 0.47);
+    gl.uniform1f(this.uLocs._TouchPosSDFFalloff, 0.41);
+    gl.uniform1f(this.uLocs._BackgroundPixelScale, 6.0);
+    gl.uniform1f(this.uLocs.uDisabledFillOpacity, 0.4);
+    gl.uniform1f(this.uLocs.uDisabledSparkOpacity, 3.5);
+    gl.uniform1f(this.uLocs.uDisabledSparkIntensity, 2.29);
+    gl.uniform1f(this.uLocs.uDisabledSpeed, 0.3);
+    gl.uniform1f(this.uLocs._ShineSpeed, 37.9);
+    gl.uniform1f(this.uLocs._ShineBrightness, 0.12);
+    gl.uniform1f(this.uLocs._TouchDisplaceSpeed, 2.9);
+    gl.uniform1f(this.uLocs._TouchDisplaceStrength, 0.08);
+    gl.uniform1f(this.uLocs._NoiseEvoSpeed, 0.03);
+    gl.uniform1f(this.uLocs._NoiseDirChangeSpeed, 60.0);
+    gl.uniform1f(this.uLocs._NoiseDisplaceStrength, 1.0);
+    gl.uniform1f(this.uLocs._NoiseRadius, 0.48);
+    gl.uniform1f(this.uLocs._NoiseSmoothness, 1.0);
+    gl.uniform1f(this.uLocs._SDFCellSize, 0.11);
+    gl.uniform1f(this.uLocs._SDFSmoothness, 0.63);
+    gl.uniform1f(this.uLocs._SDFFalloff, 0.34);
+    gl.uniform1f(this.uLocs._SDFMoveSpeed, 9.3);
+    gl.uniform1f(this.uLocs._TouchBackgroundPixelScale, 8.0);
+
+    gl.uniform4f(this.uLocs._EdgeColor, 1.0, 0.33018857, 0.33018857, 1.0);
+    gl.uniform4f(this.uLocs._FillColor, 0.7132075, 0.23549296, 0.23549296, 1.0);
+    gl.uniform4f(this.uLocs._GlowColor, 1.0, 0.17924517, 0.17924517, 1.0);
+    gl.uniform4f(this.uLocs._DisplaceDirection, 1.0, 1.0, 0.0, 0.0);
+    gl.uniform4f(this.uLocs.uDisabledFillColor, 0.497, 0.13766898, 0.13766898, 1.0);
+    gl.uniform4f(this.uLocs._ShineColor, 1.0, 1.0, 1.0, 1.0);
+    gl.uniform4f(this.uLocs._TouchDisplaceDirection, 1.0, 1.0, 0.0, 0.0);
+    gl.uniform4f(this.uLocs._NoiseTint, 1.0, 0.0, 0.0, 1.0);
+    gl.uniform4f(this.uLocs._TouchGlowColor, 1.0, 0.0, 0.0, 1.0);
+    gl.uniform3f(this.uLocs._SparkTint, 1.0, 0.28490567, 0.28490567);
+    gl.uniform3f(this.uLocs.uDisabledSparkTint, 0.31132078, 0.077830195, 0.077830195);
   }
 
   private createProgram(vsSource: string, fsSource: string): WebGLProgram | null {
@@ -294,7 +369,9 @@ export class NoiseShaderRenderer {
   }
 
   public updateTouches(touchList: TouchPoint[], time: number) {
-    const currentIds = new Set<number | string>();
+    if (touchList.length === 0 && this.touches.size === 0) return;
+    const currentIds = this.currentTouchIds;
+    currentIds.clear();
     for (const t of touchList) {
       currentIds.add(t.id);
       const existing = this.touches.get(t.id);
@@ -321,6 +398,63 @@ export class NoiseShaderRenderer {
     this.touches.clear();
   }
 
+  private buildZones(blockAreas: any[], timeChart: number, aspect: number): Zone[] {
+    const first = blockAreas[0];
+    const len = blockAreas.length;
+    if (
+      this.zoneCacheFirst === first &&
+      this.zoneCacheLen === len &&
+      this.zoneCacheTime === timeChart &&
+      this.zoneCacheAspect === aspect
+    ) {
+      return this.zoneOut;
+    }
+
+    const out = this.zoneOut;
+    out.length = 0;
+    const pool = this.zonePool;
+    let poolIdx = 0;
+    let hasDisabled = false;
+    let hasActive = false;
+    let hasReady = false;
+
+    for (let i = 0; i < len; i++) {
+      let slot = pool[poolIdx];
+      if (!slot) {
+        slot = {
+          line2area: false,
+          y_scale: 1,
+          color: DEFAULT_BLOCK_COLOR,
+          center: { x: 0, y: 0 },
+          half: { x: 0, y: 0 },
+          angle: 0,
+          invert: false,
+          active: false,
+          ready: false,
+          opacity: 1
+        };
+        pool[poolIdx] = slot;
+      }
+      const z = zoneFromArea(blockAreas[i], timeChart, aspect, slot);
+      if (z) {
+        out.push(z);
+        poolIdx++;
+        if (z.active) hasActive = true;
+        else if (z.opacity > 0) hasDisabled = true;
+        if (z.ready) hasReady = true;
+      }
+    }
+
+    this.zoneCacheFirst = first;
+    this.zoneCacheLen = len;
+    this.zoneCacheTime = timeChart;
+    this.zoneCacheAspect = aspect;
+    this.zoneHasDisabled = hasDisabled;
+    this.zoneHasActive = hasActive;
+    this.zoneHasReady = hasReady;
+    return out;
+  }
+
   private setCommonUniforms(timeChart: number, aspect: number, hasReady: boolean) {
     const gl = this.gl;
     if (!gl) return;
@@ -334,74 +468,29 @@ export class NoiseShaderRenderer {
     gl.uniform4f(this.uLocs.uUnityTime, timeChart / 20.0, timeChart, timeChart * 2.0, timeChart * 3.0);
     gl.uniform4f(this.uLocs._ScreenParams, W, H, 1.0 + 1.0 / W, 1.0 + 1.0 / H);
     gl.uniform4f(this.uLocs._EffectRT_TexelSize, 1.0 / maskW, 1.0 / maskH, maskW, maskH);
-    gl.uniform1i(this.uLocs.uColored, 0);
     gl.uniform1f(this.uLocs.uReadyExtra, hasReady ? 1.0 : 0.0);
-
-    // Official Phira-Pro constants
-    gl.uniform1f(this.uLocs._EdgeOpacity, 0.8);
-    gl.uniform1f(this.uLocs._FillStrength, 0.667);
-    gl.uniform1f(this.uLocs._FillOpacity, 0.667);
-    gl.uniform1f(this.uLocs._GlowIntensity, 0.8);
-    gl.uniform1f(this.uLocs._SparkMapOpacity, 5.69);
-    gl.uniform1f(this.uLocs._SparkHueShiftAmount, 0.2);
-    gl.uniform1f(this.uLocs._SparkDisplaceIntensity, 2.39);
-    gl.uniform1f(this.uLocs._DisplaceBlendIntensity, 0.411);
-    gl.uniform1f(this.uLocs._DisplaceSpeed, 1.5);
-    gl.uniform1f(this.uLocs._DisplaceStrength, 0.15);
-    gl.uniform1f(this.uLocs._TouchPosRadius, 0.5);
-    gl.uniform1f(this.uLocs._TouchPosSDFSmoothness, 0.47);
-    gl.uniform1f(this.uLocs._TouchPosSDFFalloff, 0.41);
-    gl.uniform1f(this.uLocs._BackgroundPixelScale, 6.0);
-    gl.uniform1f(this.uLocs.uDisabledFillOpacity, 0.4);
-    gl.uniform1f(this.uLocs.uDisabledSparkOpacity, 3.5);
-    gl.uniform1f(this.uLocs.uDisabledSparkIntensity, 2.29);
-    gl.uniform1f(this.uLocs.uDisabledSpeed, 0.3);
-    gl.uniform1f(this.uLocs._ShineSpeed, 37.9);
-    gl.uniform1f(this.uLocs._ShineBrightness, 0.12);
-    gl.uniform1f(this.uLocs._TouchDisplaceSpeed, 2.9);
-    gl.uniform1f(this.uLocs._TouchDisplaceStrength, 0.08);
-    gl.uniform1f(this.uLocs._NoiseEvoSpeed, 0.03);
-    gl.uniform1f(this.uLocs._NoiseDirChangeSpeed, 60.0);
-    gl.uniform1f(this.uLocs._NoiseDisplaceStrength, 1.0);
-    gl.uniform1f(this.uLocs._NoiseRadius, 0.48);
-    gl.uniform1f(this.uLocs._NoiseSmoothness, 1.0);
-    gl.uniform1f(this.uLocs._SDFCellSize, 0.11);
-    gl.uniform1f(this.uLocs._SDFSmoothness, 0.63);
-    gl.uniform1f(this.uLocs._SDFFalloff, 0.34);
-    gl.uniform1f(this.uLocs._SDFMoveSpeed, 9.3);
-    gl.uniform1f(this.uLocs._TouchBackgroundPixelScale, 8.0);
 
     const touchShine = (0.63 + 0.37 * (Math.sin(timeChart * 43.0) * 0.5 + 0.5)) * 2.0;
     gl.uniform1f(this.uLocs._TouchPosShine, touchShine);
 
-    gl.uniform4f(this.uLocs._EdgeColor, 1.0, 0.33018857, 0.33018857, 1.0);
-    gl.uniform4f(this.uLocs._FillColor, 0.7132075, 0.23549296, 0.23549296, 1.0);
-    gl.uniform4f(this.uLocs._GlowColor, 1.0, 0.17924517, 0.17924517, 1.0);
-    gl.uniform4f(this.uLocs._DisplaceDirection, 1.0, 1.0, 0.0, 0.0);
-    gl.uniform4f(this.uLocs.uDisabledFillColor, 0.497, 0.13766898, 0.13766898, 1.0);
-    gl.uniform4f(this.uLocs._ShineColor, 1.0, 1.0, 1.0, 1.0);
-    gl.uniform4f(this.uLocs._TouchDisplaceDirection, 1.0, 1.0, 0.0, 0.0);
-    gl.uniform4f(this.uLocs._NoiseTint, 1.0, 0.0, 0.0, 1.0);
-    gl.uniform4f(this.uLocs._TouchGlowColor, 1.0, 0.0, 0.0, 1.0);
-    gl.uniform3f(this.uLocs._SparkTint, 1.0, 0.28490567, 0.28490567);
-    gl.uniform3f(this.uLocs.uDisabledSparkTint, 0.31132078, 0.077830195, 0.077830195);
-
     // Touch array uniforms
-    const touchArr = Array.from(this.touches.values());
-    const touchCount = Math.min(10, touchArr.length);
+    const touchCount = Math.min(10, this.touches.size);
     gl.uniform1i(this.uLocs._TouchPosCount, touchCount);
-    for (let i = 0; i < 10; i++) {
-      const loc = this.uLocs[`_TouchPos[${i}]`];
-      if (loc) {
-        if (i < touchCount) {
-          const t = touchArr[i];
-          const u = (t.x / W) * aspect;
-          const v = 1.0 - (t.y / H);
-          gl.uniform2f(loc, u, v);
-        } else {
-          gl.uniform2f(loc, 0.0, 0.0);
+    if (touchCount > 0 || this.lastTouchCount > 0) {
+      let i = 0;
+      for (const t of this.touches.values()) {
+        if (i >= 10) break;
+        const loc = this.uLocs[`_TouchPos[${i}]`];
+        if (loc) {
+          gl.uniform2f(loc, (t.x / W) * aspect, 1.0 - (t.y / H));
         }
+        i++;
       }
+      for (; i < this.lastTouchCount; i++) {
+        const loc = this.uLocs[`_TouchPos[${i}]`];
+        if (loc) gl.uniform2f(loc, 0.0, 0.0);
+      }
+      this.lastTouchCount = touchCount;
     }
   }
 
@@ -409,25 +498,26 @@ export class NoiseShaderRenderer {
     const gl = this.gl;
     if (!gl) return;
 
-    const bind = (unit: number, loc: WebGLUniformLocation | null, tex: WebGLTexture | null) => {
+    const bind = (unit: number, tex: WebGLTexture | null) => {
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D, tex || this.emptyTex);
-      if (loc) gl.uniform1i(loc, unit);
     };
 
-    bind(0, this.uLocs.uDisplaceTex, this.displaceTex);
-    bind(1, this.uLocs.uSparkTex, this.sparkTex);
-    bind(2, this.uLocs.uNoiseTex, this.noiseTex);
-    bind(3, this.uLocs.uScene, this.sceneTex);
-    bind(4, this.uLocs.uMasks, this.masksTex);
-    bind(5, this.uLocs.uAuxMasks, this.auxMaskTex);
-    bind(6, this.uLocs.uActiveColors, this.emptyTex);
-    bind(7, this.uLocs.uDisabledColors, this.emptyTex);
+    bind(0, this.displaceTex);
+    bind(1, this.sparkTex);
+    bind(2, this.noiseTex);
+    bind(3, this.sceneTex);
+    bind(4, this.masksTex);
+    bind(5, this.auxMaskTex);
+    bind(6, this.emptyTex);
+    bind(7, this.emptyTex);
   }
 
   private uploadMasks() {
     const gl = this.gl;
     if (!gl) return;
+    if (this.uploadedMaskVersion === this.masks.version) return;
+    this.uploadedMaskVersion = this.masks.version;
 
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
 
@@ -451,14 +541,8 @@ export class NoiseShaderRenderer {
   ) {
     if (blockAreas.length === 0) return;
 
-    const zones: Zone[] = [];
-    for (const area of blockAreas) {
-      const z = zoneFromArea(area, timeChart, aspect);
-      if (z) zones.push(z);
-    }
-
-    const hasDisabled = zones.some(z => !z.active && z.opacity > 0);
-    if (!hasDisabled) return;
+    const zones = this.buildZones(blockAreas, timeChart, aspect);
+    if (!this.zoneHasDisabled) return;
 
     if (!enabledShader || !this.gl || !this.mainProgram) {
       drawBlockSimple(ctx, aspect, zones, true, ignoreTripleInversion);
@@ -469,7 +553,8 @@ export class NoiseShaderRenderer {
     this.resize(ctx.canvas.width, ctx.canvas.height);
 
     // Rasterize masks (disabled layer doesn't need active touches)
-    this.masks.render(this.width, this.height, aspect, zones, timeChart, [], blockAreas, ignoreTripleInversion);
+    this.touchScratch.length = 0;
+    this.masks.render(this.width, this.height, aspect, zones, timeChart, this.touchScratch, blockAreas[0], ignoreTripleInversion);
     this.uploadMasks();
 
     // Render WebGL Disabled layer (uLayer = 0)
@@ -485,7 +570,7 @@ export class NoiseShaderRenderer {
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE); // Additive blending for disabled sparkles & glow
 
-    const posLoc = gl.getAttribLocation(this.mainProgram, 'aPosition');
+    const posLoc = this.aPosLoc;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
     gl.enableVertexAttribArray(posLoc);
     gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
@@ -516,18 +601,9 @@ export class NoiseShaderRenderer {
   ) {
     if (blockAreas.length === 0) return;
 
-    const zones: Zone[] = [];
-    let hasActive = false;
-    let hasReady = false;
-
-    for (const area of blockAreas) {
-      const z = zoneFromArea(area, timeChart, aspect);
-      if (z) {
-        zones.push(z);
-        if (z.active) hasActive = true;
-        if (z.ready) hasReady = true;
-      }
-    }
+    const zones = this.buildZones(blockAreas, timeChart, aspect);
+    const hasActive = this.zoneHasActive;
+    const hasReady = this.zoneHasReady;
 
     const hoverActive = this.touches.size > 0;
     if (!hasActive && !hasReady && !hoverActive) return;
@@ -563,12 +639,13 @@ export class NoiseShaderRenderer {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sctx ? this.sceneSmall : ctx.canvas);
 
     // Rasterize masks with touch dissolution
-    const touchList: Array<{ x: number; y: number; scale: number }> = [];
+    const touchList = this.touchScratch;
+    touchList.length = 0;
     for (const t of this.touches.values()) {
       if (t.scale > 0) touchList.push(t);
     }
 
-    this.masks.render(this.width, this.height, aspect, zones, timeChart, touchList, blockAreas, ignoreTripleInversion);
+    this.masks.render(this.width, this.height, aspect, zones, timeChart, touchList, blockAreas[0], ignoreTripleInversion);
     this.uploadMasks();
 
     // Render WebGL Active overlay (uLayer = 3)
@@ -584,7 +661,7 @@ export class NoiseShaderRenderer {
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); // Premultiplied alpha composite
 
-    const posLoc = gl.getAttribLocation(this.mainProgram, 'aPosition');
+    const posLoc = this.aPosLoc;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
     gl.enableVertexAttribArray(posLoc);
     gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);

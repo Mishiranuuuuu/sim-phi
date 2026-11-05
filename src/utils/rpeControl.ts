@@ -20,6 +20,9 @@ export interface ControlEvent {
 interface ControlSegment {
   x0: number;
   x1: number;
+  minX: number;
+  maxX: number;
+  invDenom: number;
   v0: number;
   v1: number;
   easeFn?: (t: number) => number;
@@ -27,6 +30,8 @@ interface ControlSegment {
 
 export class ControlTrack {
   private segments: ControlSegment[];
+  private isMonotonicAsc = true;
+  private lastIdx = 0;
   public defaultValue: number;
   public hasEvents: boolean;
 
@@ -81,29 +86,72 @@ export class ControlTrack {
           }
         }
       }
-      this.segments.push({ x0, x1, v0, v1, easeFn });
+      const minX = x0 <= x1 ? x0 : x1;
+      const maxX = x0 <= x1 ? x1 : x0;
+      const denom = x1 - x0;
+      const invDenom = denom === 0 ? 0 : 1 / denom;
+      if (x0 > x1 || (i > 0 && x0 < this.segments[i - 1].x1)) {
+        this.isMonotonicAsc = false;
+      }
+      this.segments.push({ x0, x1, minX, maxX, invDenom, v0, v1, easeFn });
     }
   }
 
   public sample(d: number): number {
     if (!this.hasEvents) return this.defaultValue;
-    if (this.segments.length === 0) return this.defaultValue;
+    const segments = this.segments;
+    const len = segments.length;
+    if (len === 0) return this.defaultValue;
 
-    for (let i = 0; i < this.segments.length; i++) {
-      const seg = this.segments[i];
-      const minX = Math.min(seg.x0, seg.x1);
-      const maxX = Math.max(seg.x0, seg.x1);
-      if (d >= minX && d <= maxX) {
-        const denom = seg.x1 - seg.x0;
-        const t = denom === 0 ? 0 : Math.max(0, Math.min(1, (d - seg.x0) / denom));
-        const p = seg.easeFn ? seg.easeFn(t) : t;
-        return seg.v0 + (seg.v1 - seg.v0) * p;
+    if (this.isMonotonicAsc) {
+      const first = segments[0];
+      if (d < first.minX) return first.v0;
+      const last = segments[len - 1];
+      if (d > last.maxX) return last.v1;
+
+      const cur = this.lastIdx;
+      if (cur < len && (cur === 0 || d > segments[cur - 1].maxX)) {
+        const seg = segments[cur];
+        if (d >= seg.minX && d <= seg.maxX) {
+          if (seg.v0 === seg.v1) return seg.v0;
+          const t = seg.invDenom === 0 ? 0 : Math.max(0, Math.min(1, (d - seg.x0) * seg.invDenom));
+          const p = seg.easeFn ? seg.easeFn(t) : t;
+          return seg.v0 + (seg.v1 - seg.v0) * p;
+        }
+      }
+
+      let lo = 0;
+      let hi = len;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (segments[mid].maxX < d) lo = mid + 1;
+        else hi = mid;
+      }
+      if (lo < len) {
+        const seg = segments[lo];
+        if (d >= seg.minX) {
+          this.lastIdx = lo;
+          if (seg.v0 === seg.v1) return seg.v0;
+          const t = seg.invDenom === 0 ? 0 : Math.max(0, Math.min(1, (d - seg.x0) * seg.invDenom));
+          const p = seg.easeFn ? seg.easeFn(t) : t;
+          return seg.v0 + (seg.v1 - seg.v0) * p;
+        }
+      }
+    } else {
+      for (let i = 0; i < len; i++) {
+        const seg = segments[i];
+        if (d >= seg.minX && d <= seg.maxX) {
+          if (seg.v0 === seg.v1) return seg.v0;
+          const t = seg.invDenom === 0 ? 0 : Math.max(0, Math.min(1, (d - seg.x0) * seg.invDenom));
+          const p = seg.easeFn ? seg.easeFn(t) : t;
+          return seg.v0 + (seg.v1 - seg.v0) * p;
+        }
       }
     }
 
     // Clamp to nearest segment endpoint if outside range
-    const first = this.segments[0];
-    const last = this.segments[this.segments.length - 1];
+    const first = segments[0];
+    const last = segments[len - 1];
     const distFirst = Math.abs(d - first.x0);
     const distLast = Math.abs(d - last.x1);
     return distFirst <= distLast ? first.v0 : last.v1;

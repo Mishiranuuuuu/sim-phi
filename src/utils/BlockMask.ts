@@ -1,7 +1,7 @@
 // CPU equivalent of mask rasterization, edge extraction and glow dilation
 import { Zone, DEFAULT_BLOCK_COLOR } from './BlockSimple';
 
-export function zoneFromArea(area: any, time: number, aspect: number): Zone | null {
+export function zoneFromArea(area: any, time: number, aspect: number, out?: Zone): Zone | null {
   if (!area.visible) return null;
   const trCenter = area.chartCenter || { x: 0, y: 0 };
   const trSize = area.chartSize || { x: 0, y: 0 };
@@ -16,20 +16,50 @@ export function zoneFromArea(area: any, time: number, aspect: number): Zone | nu
     active = phase === 2;
     ready = phase === 1;
   } else {
-    active = area.activeIntervals && area.activeIntervals.length > 0
-      ? area.activeIntervals.some((i: any) => time >= i.start && time < i.end)
-      : time >= area.enableTime && time < area.disableTime;
-    ready = !active && (
-      area.activeIntervals && area.activeIntervals.length > 0
-        ? area.activeIntervals.some((i: any) => (i.readyFlash ?? 0.5) > 0 && time >= i.start - (i.readyFlash ?? 0.5) && time < i.start)
-        : time >= area.enableTime - 0.5 && time < area.enableTime
-    );
+    const intervals = area.activeIntervals;
+    if (intervals && intervals.length > 0) {
+      for (let k = 0; k < intervals.length; k++) {
+        const iv = intervals[k];
+        if (time >= iv.start && time < iv.end) {
+          active = true;
+          break;
+        }
+      }
+      if (!active) {
+        for (let k = 0; k < intervals.length; k++) {
+          const iv = intervals[k];
+          const rf = iv.readyFlash ?? 0.5;
+          if (rf > 0 && time >= iv.start - rf && time < iv.start) {
+            ready = true;
+            break;
+          }
+        }
+      }
+    } else {
+      active = time >= area.enableTime && time < area.disableTime;
+      ready = !active && time >= area.enableTime - 0.5 && time < area.enableTime;
+    }
   }
   const angle = -(area.chartRotation || 0) * Math.PI / 180;
   const fadesIn = area.appearTime < area.enableTime;
   const opacity = (!area.rpeCanvas && !active && fadesIn)
     ? Math.max(0, Math.min(1, (time - area.appearTime) / 0.5))
     : 1.0;
+
+  if (out) {
+    out.line2area = !!area.rpeCanvas;
+    out.y_scale = area.rpeCanvas ? 1.5 / aspect : 1.0;
+    out.color = DEFAULT_BLOCK_COLOR;
+    out.center = trCenter;
+    out.half.x = halfX;
+    out.half.y = halfY;
+    out.angle = angle;
+    out.invert = !!area.isSubtract;
+    out.active = active;
+    out.ready = ready;
+    out.opacity = opacity;
+    return out;
+  }
 
   return {
     line2area: !!area.rpeCanvas,
@@ -52,32 +82,53 @@ export function rasterRows(
   zone: Zone,
   write: (y: number, first: number, last: number) => void
 ) {
-  if (zone.half.x <= 0 || zone.half.y <= 0) return;
+  const halfX = zone.half.x;
+  const halfY = zone.half.y;
+  if (halfX <= 0 || halfY <= 0) return;
   const s = Math.sin(zone.angle);
   const c = Math.cos(zone.angle);
-  const yHalf = (Math.abs(s) * zone.half.x + Math.abs(c) * zone.half.y) * zone.y_scale;
-  const start = Math.max(0, Math.min(height, Math.ceil(((zone.center.y - yHalf) * aspect + 1) * height * 0.5 - 0.5)));
-  const end = Math.max(0, Math.min(height, Math.floor(((zone.center.y + yHalf) * aspect + 1) * height * 0.5 - 0.5) + 1));
+  const cx = zone.center.x;
+  const cy = zone.center.y;
+  const yScale = zone.y_scale;
+  const yHalf = (Math.abs(s) * halfX + Math.abs(c) * halfY) * yScale;
+  const start = Math.max(0, Math.min(height, Math.ceil(((cy - yHalf) * aspect + 1) * height * 0.5 - 0.5)));
+  const end = Math.max(0, Math.min(height, Math.floor(((cy + yHalf) * aspect + 1) * height * 0.5 - 0.5) + 1));
+
+  const absC = Math.abs(c);
+  const absS = Math.abs(s);
+  const invC = absC >= 1e-7 ? 1 / c : 0;
+  const invNegS = absS >= 1e-7 ? -1 / s : 0;
 
   for (let y = start; y < end; y++) {
-    const dy = (((y + 0.5) * 2 / height - 1) / aspect - zone.center.y) / zone.y_scale;
+    const dy = (((y + 0.5) * 2 / height - 1) / aspect - cy) / yScale;
     let lo = -1.0;
     let hi = 1.0;
 
-    for (const [a, b, half] of [
-      [c, s * dy, zone.half.x],
-      [-s, c * dy, zone.half.y]
-    ]) {
-      if (Math.abs(a) < 1e-7) {
-        if (Math.abs(b) > half) {
-          hi = lo - 1;
-          break;
-        }
+    // Axis 1: a = c, b = s * dy, half = halfX
+    const b1 = s * dy;
+    if (absC < 1e-7) {
+      if (Math.abs(b1) > halfX) continue;
+    } else {
+      const a0 = (-halfX - b1) * invC + cx;
+      const a1 = (halfX - b1) * invC + cx;
+      const min0 = a0 < a1 ? a0 : a1;
+      const max0 = a0 < a1 ? a1 : a0;
+      if (min0 > lo) lo = min0;
+      if (max0 < hi) hi = max0;
+    }
+
+    if (lo <= hi) {
+      // Axis 2: a = -s, b = c * dy, half = halfY
+      const b2 = c * dy;
+      if (absS < 1e-7) {
+        if (Math.abs(b2) > halfY) continue;
       } else {
-        const a0 = (-half - b) / a + zone.center.x;
-        const a1 = (half - b) / a + zone.center.x;
-        lo = Math.max(lo, Math.min(a0, a1));
-        hi = Math.min(hi, Math.max(a0, a1));
+        const a0 = (-halfY - b2) * invNegS + cx;
+        const a1 = (halfY - b2) * invNegS + cx;
+        const min0 = a0 < a1 ? a0 : a1;
+        const max0 = a0 < a1 ? a1 : a0;
+        if (min0 > lo) lo = min0;
+        if (max0 < hi) hi = max0;
       }
     }
 
@@ -104,6 +155,7 @@ const GLOW_WEIGHTS: number[] = (() => {
 export class BlockMasks {
   public width = 0;
   public height = 0;
+  public version = 0;
 
   // Output buffers uploaded to WebGL textures
   // uMasks: RGBA = (active Compose, Edge, Glow, disabled Compose)
@@ -437,6 +489,7 @@ export class BlockMasks {
 
     // Render Rings (Edge & Glow Dilation) on Active Compose
     this.renderRings();
+    this.version++;
 
     this.renderHover(canvasWidth, canvasHeight, aspect, touches);
   }
@@ -455,11 +508,13 @@ export class BlockMasks {
     if (this.hoverDirty) {
       for (let j = 3, n = bw * bh * 4; j < n; j += 4) aux[j] = 0;
       this.hoverDirty = false;
+      this.version++;
     }
     if (touches.length === 0) return;
 
     const radius = 0.25; // ~25% screen height
     const rSq = radius * radius;
+    let touched = false;
 
     for (const t of touches) {
       if (t.scale <= 0) continue;
@@ -488,7 +543,9 @@ export class BlockMasks {
         }
       }
       this.hoverDirty = true;
+      touched = true;
     }
+    if (touched) this.version++;
   }
 
   private renderRings() {

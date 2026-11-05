@@ -240,6 +240,68 @@ export interface RawRpeEvent {
   transformStep?: boolean;
 }
 
+export function solveCubicBezier(p: number, x1: number, y1: number, x2: number, y2: number): number {
+  if (p <= 0) return 0;
+  if (p >= 1) return 1;
+  if (x1 === y1 && x2 === y2) return p;
+  let blo = 0;
+  let bhi = 1;
+  let t = p;
+  for (let step = 0; step < 8; step++) {
+    const inv = 1 - t;
+    const inv2 = inv * inv;
+    const t2 = t * t;
+    const x = 3 * inv2 * t * x1 + 3 * inv * t2 * x2 + t2 * t - p;
+    if (Math.abs(x) < 1e-7) break;
+    if (x < 0) blo = t;
+    else bhi = t;
+    const dx = 3 * inv2 * x1 + 6 * inv * t * (x2 - x1) + 3 * t2 * (1 - x2);
+    if (dx > 1e-6) {
+      const next = t - x / dx;
+      t = next > blo && next < bhi ? next : (blo + bhi) * 0.5;
+    } else {
+      t = (blo + bhi) * 0.5;
+    }
+  }
+  if (bhi - blo > 1e-6) {
+    const invT = 1 - t;
+    const err = 3 * invT * invT * t * x1 + 3 * invT * t * t * x2 + t * t * t - p;
+    if (Math.abs(err) >= 1e-7) {
+      for (let step = 0; step < 20; step++) {
+        t = (blo + bhi) * 0.5;
+        const inv = 1 - t;
+        const x = 3 * inv * inv * t * x1 + 3 * inv * t * t * x2 + t * t * t;
+        if (x < p) blo = t;
+        else bhi = t;
+      }
+      t = (blo + bhi) * 0.5;
+    }
+  }
+  const inv = 1 - t;
+  return 3 * inv * inv * t * y1 + 3 * inv * t * t * y2 + t * t * t;
+}
+
+function evalTrackEase(
+  p: number,
+  easingType: number,
+  easingLeft: number,
+  easingRight: number,
+  easeBase: number,
+  easeRange: number,
+  bezier: boolean,
+  bezierPoints: [number, number, number, number]
+): number {
+  if (bezier) {
+    return solveCubicBezier(p, bezierPoints[0], bezierPoints[1], bezierPoints[2], bezierPoints[3]);
+  }
+  if (easingType === 1) return p;
+  if (easingLeft === 0 && easingRight === 1) {
+    return rpeCurve(easingType, p);
+  }
+  if (Math.abs(easeRange) < 1e-12) return p;
+  return (rpeCurve(easingType, easingLeft + (easingRight - easingLeft) * p) - easeBase) / easeRange;
+}
+
 interface TimedTrackEvent {
   startSec: number;
   endSec: number;
@@ -248,6 +310,8 @@ interface TimedTrackEvent {
   easingType: number;
   easingLeft: number;
   easingRight: number;
+  easeBase: number;
+  easeRange: number;
   bezier: boolean;
   bezierPoints: [number, number, number, number];
   anchor: { x: number; y: number };
@@ -258,6 +322,7 @@ interface TimedTrackEvent {
 
 export class RpeTrack {
   private events: TimedTrackEvent[] = [];
+  private lastIdx = 0;
   public axis: AxisKind;
   public fallback: number;
 
@@ -282,6 +347,9 @@ export class RpeTrack {
       const easingRight = Math.max(0, Math.min(1, raw.easingRight != null ? Number(raw.easingRight) : 1));
       const bezier = !!raw.bezier;
       const bezierPoints = raw.bezierPoints || [0, 0, 1, 1];
+      const isUnclipped = bezier || easingType === 1 || (easingLeft === 0 && easingRight === 1);
+      const easeBase = isUnclipped ? 0 : rpeCurve(easingType, easingLeft);
+      const easeRange = isUnclipped ? 1 : rpeCurve(easingType, easingRight) - easeBase;
       const anchor = raw.anchor ? { x: Number(raw.anchor.x) || 0, y: Number(raw.anchor.y) || 0 } : center;
 
       this.events.push({
@@ -292,6 +360,8 @@ export class RpeTrack {
         easingType,
         easingLeft,
         easingRight,
+        easeBase,
+        easeRange,
         bezier,
         bezierPoints,
         anchor,
@@ -319,47 +389,87 @@ export class RpeTrack {
     }
   }
 
-  public sample(time: number): [number, TimedTrackEvent | null] {
-    if (this.events.length === 0) return [this.fallback, null];
+  private findEventIndex(time: number): number {
+    const events = this.events;
+    const len = events.length;
+    if (len === 0) return -1;
+    const tEps = time + 1e-9;
+    if (events[0].startSec > tEps) return -1;
+
+    const cur = this.lastIdx;
+    if (cur < len && events[cur].startSec <= tEps) {
+      if (cur + 1 === len || events[cur + 1].startSec > tEps) {
+        return cur;
+      }
+      if (events[cur + 1].startSec <= tEps && (cur + 2 === len || events[cur + 2].startSec > tEps)) {
+        this.lastIdx = cur + 1;
+        return cur + 1;
+      }
+      let lo = cur + 1;
+      let hi = len;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (events[mid].startSec <= tEps) lo = mid + 1;
+        else hi = mid;
+      }
+      this.lastIdx = lo - 1;
+      return lo - 1;
+    }
+
     let lo = 0;
-    let hi = this.events.length;
+    let hi = cur < len ? cur : len;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
-      if (this.events[mid].startSec <= time + 1e-9) lo = mid + 1;
+      if (events[mid].startSec <= tEps) lo = mid + 1;
       else hi = mid;
     }
-    if (lo === 0) return [this.fallback, null];
-    const entry = this.events[lo - 1];
+    if (lo === 0) return -1;
+    this.lastIdx = lo - 1;
+    return lo - 1;
+  }
+
+  public sampleValue(time: number): number {
+    const idx = this.findEventIndex(time);
+    if (idx < 0) return this.fallback;
+    const entry = this.events[idx];
+    if (entry.startVal === entry.endVal || time >= entry.endSec || entry.endSec <= entry.startSec) {
+      return time >= entry.endSec || entry.endSec <= entry.startSec ? entry.endVal : entry.startVal;
+    }
+    const p = time <= entry.startSec ? 0 : (time - entry.startSec) / (entry.endSec - entry.startSec);
+    const eased = evalTrackEase(
+      p,
+      entry.easingType,
+      entry.easingLeft,
+      entry.easingRight,
+      entry.easeBase,
+      entry.easeRange,
+      entry.bezier,
+      entry.bezierPoints
+    );
+    return entry.startVal + (entry.endVal - entry.startVal) * eased;
+  }
+
+  public sample(time: number): [number, TimedTrackEvent | null] {
+    const idx = this.findEventIndex(time);
+    if (idx < 0) return [this.fallback, null];
+    const entry = this.events[idx];
     if (entry.startVal === entry.endVal) {
       return [entry.startVal, entry];
     }
-    const p = entry.endSec <= entry.startSec
-      ? 1
-      : Math.max(0, Math.min(1, (time - entry.startSec) / (entry.endSec - entry.startSec)));
-
-    let eased = p;
-    if (entry.bezier) {
-      const [x1, y1, x2, y2] = entry.bezierPoints;
-      const component = (t: number, a: number, b: number) =>
-        3 * t * Math.pow(1 - t, 2) * a + 3 * t * t * (1 - t) * b + Math.pow(t, 3);
-      let blo = 0;
-      let bhi = 1;
-      for (let step = 0; step < 40; step++) {
-        const mid = (blo + bhi) * 0.5;
-        if (component(mid, x1, x2) < p) blo = mid;
-        else bhi = mid;
-      }
-      eased = component((blo + bhi) * 0.5, y1, y2);
-    } else {
-      const base = rpeCurve(entry.easingType, entry.easingLeft);
-      const range = rpeCurve(entry.easingType, entry.easingRight) - base;
-      if (Math.abs(range) < 1e-12) {
-        eased = p;
-      } else {
-        const clipped = entry.easingLeft + (entry.easingRight - entry.easingLeft) * p;
-        eased = (rpeCurve(entry.easingType, clipped) - base) / range;
-      }
+    if (time >= entry.endSec || entry.endSec <= entry.startSec) {
+      return [entry.endVal, entry];
     }
+    const p = time <= entry.startSec ? 0 : (time - entry.startSec) / (entry.endSec - entry.startSec);
+    const eased = evalTrackEase(
+      p,
+      entry.easingType,
+      entry.easingLeft,
+      entry.easingRight,
+      entry.easeBase,
+      entry.easeRange,
+      entry.bezier,
+      entry.bezierPoints
+    );
     return [entry.startVal + (entry.endVal - entry.startVal) * eased, entry];
   }
 
@@ -377,12 +487,14 @@ export class RpeColorTrack {
   private rTrack: RpeTrack;
   private gTrack: RpeTrack;
   private bTrack: RpeTrack;
+  private outColor: [number, number, number];
 
   public constructor(
     rawEvents: any[] | undefined,
     defaultColor: [number, number, number] = [255, 255, 255],
     tempo: RPETempo
   ) {
+    this.outColor = [defaultColor[0], defaultColor[1], defaultColor[2]];
     const getChannel = (val: any, idx: number, fallback: number) => {
       if (Array.isArray(val)) {
         const n = Number(val[idx]);
@@ -428,11 +540,11 @@ export class RpeColorTrack {
   }
 
   public sample(time: number): [number, number, number] {
-    return [
-      Math.max(0, Math.min(255, Math.round(this.rTrack.sample(time)[0]))),
-      Math.max(0, Math.min(255, Math.round(this.gTrack.sample(time)[0]))),
-      Math.max(0, Math.min(255, Math.round(this.bTrack.sample(time)[0])))
-    ];
+    const out = this.outColor;
+    out[0] = Math.max(0, Math.min(255, Math.round(this.rTrack.sampleValue(time))));
+    out[1] = Math.max(0, Math.min(255, Math.round(this.gTrack.sampleValue(time))));
+    out[2] = Math.max(0, Math.min(255, Math.round(this.bTrack.sampleValue(time))));
+    return out;
   }
 }
 
@@ -456,6 +568,8 @@ interface TimedTextEntry {
   easingType: number;
   easingLeft: number;
   easingRight: number;
+  easeBase: number;
+  easeRange: number;
   bezier: boolean;
   bezierPoints: [number, number, number, number];
   numericTween?: {
@@ -469,6 +583,7 @@ interface TimedTextEntry {
 
 export class RpeTextTrack {
   private events: TimedTextEntry[] = [];
+  private lastIdx = 0;
   public fallback: string;
 
   public constructor(
@@ -490,6 +605,9 @@ export class RpeTextTrack {
       const easingRight = Math.max(0, Math.min(1, raw.easingRight != null ? Number(raw.easingRight) : 1));
       const bezier = !!raw.bezier;
       const bezierPoints = raw.bezierPoints || [0, 0, 1, 1];
+      const isUnclipped = bezier || easingType === 1 || (easingLeft === 0 && easingRight === 1);
+      const easeBase = isUnclipped ? 0 : rpeCurve(easingType, easingLeft);
+      const easeRange = isUnclipped ? 1 : rpeCurve(easingType, easingRight) - easeBase;
 
       let numericTween: TimedTextEntry['numericTween'];
       if (startRaw !== endRaw) {
@@ -537,6 +655,8 @@ export class RpeTextTrack {
         easingType,
         easingLeft,
         easingRight,
+        easeBase,
+        easeRange,
         bezier,
         bezierPoints,
         numericTween
@@ -547,16 +667,45 @@ export class RpeTextTrack {
   }
 
   public sample(time: number): string {
-    if (this.events.length === 0) return this.fallback;
-    let lo = 0;
-    let hi = this.events.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (this.events[mid].startSec <= time + 1e-9) lo = mid + 1;
-      else hi = mid;
+    const events = this.events;
+    const len = events.length;
+    if (len === 0) return this.fallback;
+    const tEps = time + 1e-9;
+    if (events[0].startSec > tEps) return this.fallback;
+
+    let idx = -1;
+    const cur = this.lastIdx;
+    if (cur < len && events[cur].startSec <= tEps) {
+      if (cur + 1 === len || events[cur + 1].startSec > tEps) {
+        idx = cur;
+      } else if (events[cur + 1].startSec <= tEps && (cur + 2 === len || events[cur + 2].startSec > tEps)) {
+        idx = cur + 1;
+        this.lastIdx = idx;
+      } else {
+        let lo = cur + 1;
+        let hi = len;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (events[mid].startSec <= tEps) lo = mid + 1;
+          else hi = mid;
+        }
+        idx = lo - 1;
+        this.lastIdx = idx;
+      }
+    } else {
+      let lo = 0;
+      let hi = cur < len ? cur : len;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (events[mid].startSec <= tEps) lo = mid + 1;
+        else hi = mid;
+      }
+      if (lo === 0) return this.fallback;
+      idx = lo - 1;
+      this.lastIdx = idx;
     }
-    if (lo === 0) return this.fallback;
-    const entry = this.events[lo - 1];
+
+    const entry = events[idx];
 
     if (entry.startRaw === entry.endRaw) {
       return entry.startRaw;
@@ -576,29 +725,16 @@ export class RpeTextTrack {
       ? 1
       : Math.max(0, Math.min(1, (time - entry.startSec) / (entry.endSec - entry.startSec)));
 
-    let eased = p;
-    if (entry.bezier) {
-      const [x1, y1, x2, y2] = entry.bezierPoints;
-      const component = (t: number, a: number, b: number) =>
-        3 * t * Math.pow(1 - t, 2) * a + 3 * t * t * (1 - t) * b + Math.pow(t, 3);
-      let blo = 0;
-      let bhi = 1;
-      for (let step = 0; step < 40; step++) {
-        const mid = (blo + bhi) * 0.5;
-        if (component(mid, x1, x2) < p) blo = mid;
-        else bhi = mid;
-      }
-      eased = component((blo + bhi) * 0.5, y1, y2);
-    } else {
-      const base = rpeCurve(entry.easingType, entry.easingLeft);
-      const range = rpeCurve(entry.easingType, entry.easingRight) - base;
-      if (Math.abs(range) < 1e-12) {
-        eased = p;
-      } else {
-        const clipped = entry.easingLeft + (entry.easingRight - entry.easingLeft) * p;
-        eased = (rpeCurve(entry.easingType, clipped) - base) / range;
-      }
-    }
+    const eased = evalTrackEase(
+      p,
+      entry.easingType,
+      entry.easingLeft,
+      entry.easingRight,
+      entry.easeBase,
+      entry.easeRange,
+      entry.bezier,
+      entry.bezierPoints
+    );
 
     if (entry.numericTween) {
       const val = entry.numericTween.startNum + (entry.numericTween.endNum - entry.numericTween.startNum) * eased;
@@ -677,8 +813,8 @@ export class RpeNextAreaEvaluator {
     rotation: number;
     scale: { x: number; y: number };
   } {
-    const valMoveX = this.tracks[0].sample(time);
-    const valMoveY = this.tracks[1].sample(time);
+    const valMoveX = this.tracks[0].sampleValue(time);
+    const valMoveY = this.tracks[1].sampleValue(time);
     const valRot = this.tracks[2].sample(time);
     const valScaleX = this.tracks[3].sample(time);
     const valScaleY = this.tracks[4].sample(time);
@@ -690,8 +826,8 @@ export class RpeNextAreaEvaluator {
     p = this.tracks[2].transformPoint(p, valRot, this.center);
 
     // Apply Move delta
-    p.x += valMoveX[0] - this.center.x;
-    p.y += valMoveY[0] - this.center.y;
+    p.x += valMoveX - this.center.x;
+    p.y += valMoveY - this.center.y;
 
     const yScale = 1.5 / aspect;
     const center = {
@@ -857,6 +993,7 @@ export class RpeLine2AreaEvaluator {
       }
     }
 
+    this.spans = this.spans.filter(s => s.end > s.start);
     this.intervals = this.spans
       .filter(s => s.phase === 2)
       .map(s => ({ start: s.start, end: s.end, readyFlash: 0.5 }));
@@ -865,11 +1002,39 @@ export class RpeLine2AreaEvaluator {
     this.disappearTime = visibleSpans.length > 0 ? visibleSpans[visibleSpans.length - 1].end : Infinity;
   }
 
+  private lastSpanIdx = 0;
+
   public getPhase(time: number): number {
-    for (const s of this.spans) {
-      if (time >= s.start && time < s.end) {
-        return s.phase;
+    const spans = this.spans;
+    const len = spans.length;
+    if (len === 0 || time < spans[0].start) return 0;
+
+    const cur = this.lastSpanIdx;
+    if (cur < len) {
+      const s = spans[cur];
+      if (time >= s.start && time < s.end) return s.phase;
+      if (cur + 1 < len) {
+        const next = spans[cur + 1];
+        if (time >= next.start && time < next.end) {
+          this.lastSpanIdx = cur + 1;
+          return next.phase;
+        }
       }
+    }
+
+    let lo = 0;
+    let hi = len;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (spans[mid].start <= time) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo === 0) return 0;
+    const idx = lo - 1;
+    const s = spans[idx];
+    if (time < s.end) {
+      this.lastSpanIdx = idx;
+      return s.phase;
     }
     return 0; // Hidden
   }
@@ -890,8 +1055,8 @@ export class RpeLine2AreaEvaluator {
     rotation: number;
     scale: { x: number; y: number };
   } {
-    const scaleX = this.scaleXTrack ? this.scaleXTrack.sample(time)[0] : 1;
-    const scaleY = this.scaleYTrack ? this.scaleYTrack.sample(time)[0] : 1;
+    const scaleX = this.scaleXTrack ? this.scaleXTrack.sampleValue(time) : 1;
+    const scaleY = this.scaleYTrack ? this.scaleYTrack.sampleValue(time) : 1;
 
     const imgW = (line?.imageW && line.imageW > 0) ? line.imageW : this.textureSize.x;
     const imgH = (line?.imageH && line.imageH > 0) ? line.imageH : this.textureSize.y;
